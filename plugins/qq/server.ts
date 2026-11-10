@@ -8,7 +8,8 @@
 
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { createChannel } from './src/channel.ts'
-import type { QQGateway } from './src/gateway.ts'
+import { resolveStateDir } from './src/credentials.ts'
+import { createSdkGateway } from './src/sdk-gateway.ts'
 
 function log(message: string): void {
   process.stderr.write(`qq channel: ${message}\n`)
@@ -18,16 +19,12 @@ function log(message: string): void {
 process.on('unhandledRejection', err => log(`unhandled rejection: ${err}`))
 process.on('uncaughtException', err => log(`uncaught exception: ${err}`))
 
-// Stands in until the real QQ gateway exists. The Channel registers with
-// Claude Code but stays disconnected from QQ.
-const notConnected: QQGateway = {
-  async connect() {
-    log('loaded, but this version does not connect to QQ yet')
-  },
-  async close() {},
-}
-
-const channel = createChannel({ gateway: notConnected })
+const channel = createChannel({
+  // QQ_CHANNEL_TRACE=1 also logs routine connection events, to troubleshoot the connection.
+  gateway: createSdkGateway({ log, trace: process.env.QQ_CHANNEL_TRACE ? log : undefined }),
+  stateDir: resolveStateDir(),
+  log,
+})
 
 // When Claude Code closes the MCP connection, stdin gets EOF. Exit then, so
 // the process does not outlive the session.
