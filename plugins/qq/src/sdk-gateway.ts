@@ -1,7 +1,12 @@
 import { ApiClient, GatewayConnection } from '@tencent-connect/qqbot-nodejs/protocol'
 import { createAccessTokenSource } from './access-token.ts'
 import type { Credentials } from './credentials.ts'
-import { CredentialsRejectedError, type QQGateway } from './gateway.ts'
+import {
+  CredentialsRejectedError,
+  type GatewayEvents,
+  type PassiveReplyTarget,
+  type QQGateway,
+} from './gateway.ts'
 
 const USER_AGENT = 'claude-channel-qq/0.0.1'
 /** The group-and-direct-chat event group. Subscribing to it needs no approval from QQ. */
@@ -22,10 +27,17 @@ export function createSdkGateway({
   /** Receives the routine connection events that `log` leaves out. For troubleshooting. */
   trace?: (line: string) => void
 }): QQGateway {
-  let live: { abort: AbortController; finished: Promise<void> } | undefined
+  let live:
+    | {
+        abort: AbortController
+        finished: Promise<void>
+        /** Sends one API request with a fresh access token. */
+        request: (method: string, path: string, body: unknown) => Promise<unknown>
+      }
+    | undefined
 
   return {
-    async connect(credentials: Credentials, onLost: (error: Error) => void): Promise<void> {
+    async connect(credentials: Credentials, { onMessage, onLost }: GatewayEvents): Promise<void> {
       if (live) throw new Error('already connected to QQ')
 
       const tokens = createAccessTokenSource({ credentials })
@@ -108,14 +120,30 @@ export function createSdkGateway({
         // QQ asks for a reconnect about once an hour and the SDK resumes within
         // seconds, so a disconnect that will be retried is not worth a line.
         onDisconnected: event => trace(`disconnected (${event.code} ${event.reason}), reconnecting: ${event.willReconnect}`),
-        // Inbound messages are not handled yet.
-        onMessage: () => {},
+        // The intent also covers group chats, which the Channel does not serve.
+        onMessage: message => {
+          if (message.kind !== 'c2c') return
+          onMessage({
+            messageId: message.messageId,
+            senderId: message.senderId,
+            text: message.content,
+            timestamp: message.timestamp,
+          })
+        },
       })
 
       const finished = connection.start().catch(error => {
         giveUp(error instanceof Error ? error : new Error(String(error)))
       })
-      live = { abort, finished }
+      const request = async (method: string, path: string, body: unknown) => {
+        try {
+          lastToken = await tokens.get()
+          return await api.request(lastToken, method, path, body)
+        } catch (error) {
+          throw new Error(withoutSecrets(error instanceof Error ? error.message : String(error)))
+        }
+      }
+      live = { abort, finished, request }
 
       try {
         await accepted
@@ -123,6 +151,15 @@ export function createSdkGateway({
         live = undefined
         throw error
       }
+    },
+
+    async sendText(senderId: string, text: string, answering?: PassiveReplyTarget): Promise<void> {
+      if (!live) throw new Error('not connected to QQ')
+      await live.request('POST', `/v2/users/${encodeURIComponent(senderId)}/messages`, {
+        msg_type: 0,
+        content: text,
+        ...(answering ? { msg_id: answering.messageId, msg_seq: answering.sequence } : {}),
+      })
     },
 
     async close(): Promise<void> {
