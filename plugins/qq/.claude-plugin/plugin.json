@@ -1,0 +1,11 @@
+{
+  "name": "qq",
+  "description": "QQ channel for Claude Code — talk to a running session from a QQ direct chat, through the official QQ Bot API.",
+  "version": "0.0.1",
+  "keywords": [
+    "qq",
+    "messaging",
+    "channel",
+    "mcp"
+  ]
+}
