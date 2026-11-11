@@ -14,6 +14,10 @@ const USER_AGENT = 'claude-channel-qq/0.0.1'
 /** The group-and-direct-chat event group. Subscribing to it needs no approval from QQ. */
 const GROUP_AND_DIRECT_CHAT_INTENT = 1 << 25
 
+/** The `message_type` of an inbound message that quotes another; the quoted one comes in `msg_elements`. */
+const QQ_MESSAGE_TYPE_QUOTE = 103
+/** How long one typing status lasts. QQ allows 60 at most. */
+const TYPING_SECONDS = 30
 const QQ_FILE_TYPE_IMAGE = 1
 const QQ_FILE_TYPE_FILE = 4
 
@@ -147,6 +151,9 @@ export function createSdkGateway({
             senderId: message.senderId,
             text: message.content,
             timestamp: message.timestamp,
+            ...(message.msgType === QQ_MESSAGE_TYPE_QUOTE
+              ? { quoted: { text: message.msgElements?.[0]?.content ?? '' } }
+              : {}),
             // QQ sends the index as `msg_idx` in the event's `message_scene.ext`.
             ...(message.msgIdx ? { quoteRef: message.msgIdx } : {}),
             attachments: (message.attachments ?? []).map(attachment => ({
@@ -187,6 +194,16 @@ export function createSdkGateway({
         ...(answering ? { msg_id: answering.messageId, msg_seq: answering.sequence } : {}),
       })) as { id?: string } | undefined
       return sent?.id ?? ''
+    },
+
+    async showTyping(senderId: string, messageId: string): Promise<void> {
+      if (!live) throw new Error('not connected to QQ')
+      await live.request('POST', `/v2/users/${encodeURIComponent(senderId)}/messages`, {
+        msg_type: 6,
+        input_notify: { input_type: 1, input_second: TYPING_SECONDS },
+        msg_id: messageId,
+        msg_seq: 1,
+      })
     },
 
     async upload(senderId: string, file: OutboundFile): Promise<string> {

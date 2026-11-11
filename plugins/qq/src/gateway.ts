@@ -26,6 +26,12 @@ export interface QQGateway {
    */
   send(senderId: string, content: OutboundContent, answering?: PassiveReplyTarget): Promise<string>
   /**
+   * Shows the bot as typing in a Sender's Direct chat for a while, in answer
+   * to one of their messages. It is not a message: QQ returns no ID for it, and
+   * it does not use up a Passive reply's sequence number.
+   */
+  showTyping(senderId: string, messageId: string): Promise<void>
+  /**
    * Uploads a file for one Sender's Direct chat and resolves with QQ's
    * reference to it, which a `media` message then sends. Rejects when QQ does
    * not take the file.
@@ -51,6 +57,8 @@ export interface InboundMessage {
   text: string
   /** When the Sender wrote it, as QQ reports it (ISO 8601). */
   timestamp: string
+  /** Set when the Sender wrote this as an answer to an earlier message, which QQ sends along. */
+  quoted?: { text: string }
   /** What an answer needs in order to quote this message, when QQ supplies it. */
   quoteRef?: QuoteRef
   /** Images and files sent with the message; empty when there are none. */

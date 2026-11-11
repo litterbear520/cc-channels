@@ -41,6 +41,12 @@ export class FakeQQGateway implements QQGateway {
   uploads: (OutboundFile & { senderId: string })[] = []
   /** Set to make QQ refuse every upload for which this returns an error. */
   refuseUpload: (file: OutboundFile) => Error | undefined = () => undefined
+  /** The typing statuses the Channel showed, in order. */
+  typing: { senderId: string; messageId: string }[] = []
+  /** Set to make QQ refuse every typing status. */
+  refuseTyping: Error | undefined
+  /** The URLs the Channel fetched, in order. */
+  downloads: string[] = []
   /** The attachments QQ serves, keyed by URL. */
   downloadable = new Map<string, Uint8Array>()
 
@@ -90,7 +96,13 @@ export class FakeQQGateway implements QQGateway {
     return `file-info-${this.uploads.length}`
   }
 
+  async showTyping(senderId: string, messageId: string): Promise<void> {
+    if (this.refuseTyping) throw this.refuseTyping
+    this.typing.push({ senderId, messageId })
+  }
+
   async download(url: string): Promise<Uint8Array> {
+    this.downloads.push(url)
     const bytes = this.downloadable.get(url)
     if (!bytes) throw new Error('QQ answered 404 for the attachment')
     return bytes

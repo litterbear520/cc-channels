@@ -7,6 +7,8 @@ import type { InboundAttachment, InboundMessage, QQGateway } from './gateway.ts'
  * many recent messages are kept in memory, to be downloaded when Claude asks.
  */
 const REMEMBERED_MESSAGES = 200
+/** The largest attachment the Channel downloads, the same limit as the official discord plugin. */
+const MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024
 /** In UTF-8 bytes: file systems limit a name to 255, and the Channel adds a prefix. */
 const MAX_FILE_NAME_BYTES = 200
 
@@ -57,9 +59,13 @@ export function createInbox({
       const stamp = now()
       const paths: string[] = []
       for (const [index, attachment] of message.attachments.entries()) {
+        const name = safeFileName(attachment.name)
+        // Checked against QQ's figure before fetching, and against the bytes after, as QQ does not always give one.
+        if ((attachment.size ?? 0) > MAX_DOWNLOAD_BYTES) throw tooLarge(name)
         const bytes = await gateway.download(attachment.url)
+        if (bytes.byteLength > MAX_DOWNLOAD_BYTES) throw tooLarge(name)
         // The prefix keeps two attachments with one name apart; the name itself can no longer leave the directory.
-        const path = join(dir, `${stamp}-${index + 1}-${safeFileName(attachment.name)}`)
+        const path = join(dir, `${stamp}-${index + 1}-${name}`)
         writeFileSync(path, bytes, { mode: 0o600 })
         chmodSync(path, 0o600)
         paths.push(path)
@@ -68,6 +74,9 @@ export function createInbox({
     },
   }
 }
+
+const tooLarge = (name: string) =>
+  new Error(`${name} is over 25 MB, the most the Channel downloads; ask the Sender for another way to get it`)
 
 /**
  * A file name with nothing in it that a file system gives meaning to: no

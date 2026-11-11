@@ -7,7 +7,13 @@ import { readCredentials } from './credentials.ts'
 import { CredentialsRejectedError, type InboundMessage, type OutboundContent, type OutboundFile, type QQGateway, type QuoteRef } from './gateway.ts'
 import { createInbox, describeAttachments } from './inbox.ts'
 import { readFilesToSend } from './outbound-files.ts'
-import { parseVerdict, permissionPrompt, readPermissionRequest, type PermissionRequest } from './permission.ts'
+import {
+  parseVerdict,
+  permissionPrompt,
+  readPermissionRequest,
+  type PermissionRequest,
+  type Verdict,
+} from './permission.ts'
 import { createReplyPolicy } from './reply-policy.ts'
 
 export interface Channel {
@@ -44,6 +50,8 @@ const INSTRUCTIONS = [
     'returns. Only recent messages can be fetched this way, and none from before a restart.',
   'When a tool call needs approval, the prompt is also sent to QQ, and the person can answer there or in ' +
     'the terminal. Their answer is handled for you and never arrives as a message.',
+  'When the person quotes an earlier message, the tag has quoting="true" and its text begins with the ' +
+    'quoted message as a block quote (lines starting with ">"), followed by what they wrote.',
   'QQ offers a bot no way to edit a message it has sent, to add a reaction, or to look up history in a ' +
     'Direct chat, so do not promise or attempt them. To correct something, send a new message. If you need ' +
     'earlier context, ask the person to send it again.',
@@ -109,6 +117,22 @@ const TOOLS = [
     },
   },
 ]
+
+const verdictTakenText = (verdict: Verdict) =>
+  `已收到你的回答：${verdict.behavior === 'allow' ? '允许' : '拒绝'}（${verdict.requestId}）。`
+
+const MAX_QUOTED_LENGTH = 500
+/**
+ * The message a Sender quoted, as a Markdown block quote to go in front of
+ * what they wrote. QQ has no history lookup, so this is the only way Claude
+ * can see what an answer refers to.
+ */
+function quotedPrefix(message: InboundMessage): string {
+  if (!message.quoted) return ''
+  const text = message.quoted.text.trim() || '(a message without text)'
+  const shown = text.length > MAX_QUOTED_LENGTH ? `${text.slice(0, MAX_QUOTED_LENGTH)}…` : text
+  return `${shown.split('\n').map(line => `> ${line}`).join('\n')}\n\n`
+}
 
 const PAIRED_TEXT = '配对成功，现在可以直接给 Claude 发消息了。'
 
@@ -338,16 +362,22 @@ export function createChannel({
         method: 'notifications/claude/channel/permission',
         params: { request_id: verdict.requestId, behavior: verdict.behavior },
       })
+      // QQ has no reactions in a Direct chat, so the Sender is told in words that the answer was taken.
+      replies
+        .deliver(message.senderId, plain(verdictTakenText(verdict)))
+        .catch(error => log(`could not acknowledge a permission answer: ${scrub(error)}`))
       return
     }
     inbox.remember(message)
     rememberForQuoting(message)
+    // Cosmetic, so a refusal is not worth a log line and never holds the message back.
+    gateway.showTyping(message.senderId, message.messageId).catch(() => {})
     await initialized
     await mcp.notification({
       method: 'notifications/claude/channel',
       params: {
         // An image or a file sent alone has no text, and an event needs some.
-        content: message.text || '(attachment)',
+        content: quotedPrefix(message) + (message.text || '(attachment)'),
         meta: {
           // In a Direct chat the conversation is identified by its Sender.
           chat_id: message.senderId,
@@ -355,6 +385,7 @@ export function createChannel({
           sender_id: message.senderId,
           ts: message.timestamp,
           ...(message.attachments.length > 0 ? describeAttachments(message.attachments) : {}),
+          ...(message.quoted ? { quoting: 'true' } : {}),
         },
       },
     })
