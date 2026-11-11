@@ -94,3 +94,11 @@ Later the same day, in a real session started with the flag, the maintainer repo
 | 14 to 17 | Images and files worked in both directions and displayed normally. |
 
 Not run, by the maintainer's decision to deal with them if a problem shows up: 7 and 18 to 26, which include the 5 MB and state-directory refusals, the whole permission relay, and the allowlist and disabled policies. Those are covered by the automated tests only.
+
+After the session was restarted with the code for quoting, typing status, and quoted messages, the maintainer reported three further checks as passed. They are not numbered steps of this checklist:
+
+| Check | Outcome |
+| --- | --- |
+| Typing status | A message sent from QQ showed the typing status in the Direct chat. |
+| Quoted inbound message | A message quoting an earlier one reached Claude with the quoted text. |
+| `reply_to` | An answer that quoted the Sender's message displayed as a quote in the QQ client. |
