@@ -49,9 +49,14 @@ export async function startChannel({
   const pending = new Map<number, { resolve: (result: any) => void; reject: (error: Error) => void }>()
   /** Channel events pushed into the session, in order. */
   const events: { content: string; meta?: Record<string, string> }[] = []
+  /** Answers to permission prompts the Channel passed on, in order. */
+  const verdicts: { request_id: string; behavior: string }[] = []
   claudeCodeSide.onmessage = message => {
     if ('method' in message && message.method === 'notifications/claude/channel') {
       events.push(message.params as (typeof events)[number])
+    }
+    if ('method' in message && message.method === 'notifications/claude/channel/permission') {
+      verdicts.push(message.params as (typeof verdicts)[number])
     }
     if (!('id' in message)) return
     const waiting = pending.get(Number(message.id))
@@ -77,6 +82,20 @@ export async function startChannel({
     return result
   }
 
+  /** Asks the Channel to relay a permission prompt, as Claude Code does when a tool call needs approval. */
+  async function askPermission(request: {
+    request_id: string
+    tool_name: string
+    description: string
+    input_preview: string
+  }): Promise<void> {
+    await claudeCodeSide.send({
+      jsonrpc: '2.0',
+      method: 'notifications/claude/channel/permission_request',
+      params: request,
+    })
+  }
+
   /** Calls one of the Channel's tools, as Claude would. Resolves with the text it returned. */
   async function callTool(name: string, args: Record<string, unknown>): Promise<{ text: string; isError: boolean }> {
     const result = await request('tools/call', { name, arguments: args })
@@ -85,7 +104,7 @@ export async function startChannel({
 
   await claudeCodeSide.start()
   await channel.start(channelSide)
-  return { channel, gateway, stateDir, clock, logged, events, request, initialize, callTool }
+  return { channel, gateway, stateDir, clock, logged, events, verdicts, request, initialize, callTool, askPermission }
 }
 
 /** Lets the Channel's background work (connecting, pushing events) run. */

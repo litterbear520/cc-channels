@@ -1,12 +1,13 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
-import { decide, isAllowed, newPairingCode as randomPairingCode, takeApprovedSenders } from './access.ts'
+import { decide, isAllowed, newPairingCode as randomPairingCode, readAccess, takeApprovedSenders } from './access.ts'
 import { MAX_MESSAGE_LENGTH, splitText } from './chunk.ts'
 import { readCredentials } from './credentials.ts'
 import { CredentialsRejectedError, type InboundMessage, type OutboundContent, type OutboundFile, type QQGateway } from './gateway.ts'
 import { createInbox, describeAttachments } from './inbox.ts'
 import { readFilesToSend } from './outbound-files.ts'
+import { parseVerdict, permissionPrompt, type PermissionRequest } from './permission.ts'
 import { createReplyPolicy } from './reply-policy.ts'
 
 export interface Channel {
@@ -40,6 +41,8 @@ const INSTRUCTIONS = [
   'A tag with attachment_count carries images or files that have not been downloaded. Call ' +
     'download_attachment with the tag\'s chat_id and message_id to save them locally, then read the paths it ' +
     'returns. Only recent messages can be fetched this way, and none from before a restart.',
+  'When a tool call needs approval, the prompt is also sent to QQ, and the person can answer there or in ' +
+    'the terminal. Their answer is handled for you and never arrives as a message.',
   'QQ offers a bot no way to edit a message it has sent, to add a reaction, or to look up history in a ' +
     'Direct chat, so do not promise or attempt them. To correct something, send a new message. If you need ' +
     'earlier context, ask the person to send it again.',
@@ -121,7 +124,14 @@ export function createChannel({
   const mcp = new Server(
     { name: 'qq', version: '0.0.1' },
     // The presence of this key is what makes Claude Code treat the server as a Channel.
-    { capabilities: { experimental: { 'claude/channel': {} }, tools: {} }, instructions: INSTRUCTIONS },
+    {
+      capabilities: {
+        // Declared because every answer is checked against the allowlist before it counts as a verdict.
+        experimental: { 'claude/channel': {}, 'claude/channel/permission': {} },
+        tools: {},
+      },
+      instructions: INSTRUCTIONS,
+    },
   )
 
   let announceInitialized = () => {}
@@ -161,6 +171,30 @@ export function createChannel({
       return { ...said(`${request.params.name} failed: ${scrub(error)}`), isError: true }
     }
   })
+
+  // Claude Code asks every Channel to relay a tool permission prompt. The SDK has
+  // no schema for this notification, so it arrives through the fallback handler.
+  mcp.fallbackNotificationHandler = async notification => {
+    if (notification.method !== 'notifications/claude/channel/permission_request') return
+    relayPermissionRequest(notification.params as unknown as PermissionRequest)
+  }
+
+  /** Sends the prompt to every paired Sender. The terminal prompt stays open, and the first answer wins. */
+  function relayPermissionRequest(request: PermissionRequest): void {
+    let access
+    try {
+      access = readAccess(stateDir)
+    } catch (error) {
+      log(`could not relay a permission prompt: ${scrub(error)}`)
+      return
+    }
+    // Under the disabled policy an answer would be dropped, so nobody is asked.
+    if (access.policy === 'disabled') return
+    const prompt = plain(permissionPrompt(request))
+    for (const senderId of access.allowFrom) {
+      replies.deliver(senderId, prompt).catch(error => log(`could not relay a permission prompt: ${scrub(error)}`))
+    }
+  }
 
   /** Refuses a conversation Claude may not write to or read from. In a Direct chat that is the Sender. */
   function assertAllowed(chatId: string): void {
@@ -240,6 +274,15 @@ export function createChannel({
     replies.noteInbound(message.senderId, message.messageId)
     if (decision.action === 'pair') {
       await replies.deliver(message.senderId, plain(pairingText(decision.code, decision.reminder)))
+      return
+    }
+    // Only a message that got this far, from an allowlisted Sender, can be a verdict.
+    const verdict = parseVerdict(message.text)
+    if (verdict) {
+      await mcp.notification({
+        method: 'notifications/claude/channel/permission',
+        params: { request_id: verdict.requestId, behavior: verdict.behavior },
+      })
       return
     }
     inbox.remember(message)
