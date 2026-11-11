@@ -21,13 +21,15 @@ const QQ_FILE_TYPE_FILE = 4
 function messageBody(content: OutboundContent): Record<string, unknown> {
   switch (content.type) {
     case 'text':
-      return { msg_type: 0, content: content.text }
+      return { msg_type: 0, content: content.text, ...quote(content.quoting) }
     case 'markdown':
-      return { msg_type: 2, markdown: { content: content.text } }
+      return { msg_type: 2, markdown: { content: content.text }, ...quote(content.quoting) }
     case 'media':
       return { msg_type: 7, media: { file_info: content.fileInfo } }
   }
 }
+
+const quote = (ref: string | undefined) => (ref ? { message_reference: { message_id: ref } } : {})
 
 /**
  * The real QQ gateway, on the official SDK's low-level protocol entry. The SDK
@@ -145,6 +147,8 @@ export function createSdkGateway({
             senderId: message.senderId,
             text: message.content,
             timestamp: message.timestamp,
+            // QQ sends the index as `msg_idx` in the event's `message_scene.ext`.
+            ...(message.msgIdx ? { quoteRef: message.msgIdx } : {}),
             attachments: (message.attachments ?? []).map(attachment => ({
               url: attachment.url,
               contentType: attachment.content_type,

@@ -102,7 +102,7 @@ allowlist 上的任何人都能向你的 Claude Code 会话下指令，权限与
 
 - **发文字。** 消息进入会话时带有你的 Sender ID、消息 ID 和时间。
 - **发图片或文件。** Claude 能看到消息带了附件，需要时再下载到 `~/.claude/channels/qq/inbox/`。
-- **看 Claude 的回答。** Claude 通过 Channel 的 `reply` 工具作答。文字以 Markdown 发送，超过 2000 个字符会拆成多条消息。
+- **看 Claude 的回答。** Claude 通过 Channel 的 `reply` 工具作答。文字以 Markdown 发送，超过 2000 个字符会拆成多条消息。Claude 可以让回答以引用你近期某条消息的形式显示。
 - **接收图片和文件**，每个不超过 5 MB。
 - **回答工具权限请求。** Claude Code 的某次工具调用需要批准时，请求会发给每个已配对的 Sender。按请求里给出的 ID 回复 `yes <id>` 或 `no <id>`（也可以用 `y` / `n`）。终端里的提示照常可用，先到的回答生效。单独一个"yes"不会被当作批准。
 

@@ -102,7 +102,7 @@ Anyone on the allowlist can give your Claude Code session instructions, with wha
 
 - **Send text.** It arrives in the session tagged with your Sender ID, the message ID, and the time.
 - **Send an image or a file.** Claude sees that the message carries attachments and downloads them on demand into `~/.claude/channels/qq/inbox/`.
-- **Read Claude's answers.** Claude answers through the Channel's `reply` tool. Text is sent as Markdown, and text over 2000 characters is split into several messages.
+- **Read Claude's answers.** Claude answers through the Channel's `reply` tool. Text is sent as Markdown, and text over 2000 characters is split into several messages. Claude can show an answer as quoting one of your recent messages.
 - **Receive images and files** of up to 5 MB each.
 - **Answer tool permission prompts.** When Claude Code needs approval for a tool call, the prompt is sent to every paired Sender. Answer `yes <id>` or `no <id>` (or `y` / `n`) with the ID shown in the prompt. The terminal prompt keeps working, and whichever answer comes first wins. A bare "yes" is never taken as an approval.
 

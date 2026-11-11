@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { approvePairing } from '../src/access.ts'
 import { messageFrom, settle, startChannel, startConnected, startWithPairedSender } from './start-channel.ts'
 
 const MINUTE_MS = 60 * 1000
@@ -242,4 +243,71 @@ test('splitting keeps the indentation of the line a new message starts with', as
   await callTool('reply', { chat_id: 'SENDER1', text: `${first}\n${second}` })
 
   expect(gateway.sent.map(message => message.text)).toEqual([first, second])
+})
+
+test('reply_to shows the answer in QQ as quoting that message, on the first message only', async () => {
+  const { gateway, callTool } = await startWithPairedSender('SENDER1')
+  const question = { ...messageFrom('SENDER1', 'is the build green?'), quoteRef: 'REFIDX_question' }
+  const later = { ...messageFrom('SENDER1', 'and the deploy?'), quoteRef: 'REFIDX_later' }
+  gateway.receive(question)
+  gateway.receive(later)
+  await settle()
+
+  const result = await callTool('reply', {
+    chat_id: 'SENDER1',
+    reply_to: question.messageId,
+    text: ['a'.repeat(1500), 'b'.repeat(1500)].join('\n\n'),
+  })
+
+  expect(result.isError).toBe(false)
+  expect(gateway.sent[0]!.content).toEqual({ type: 'markdown', text: 'a'.repeat(1500), quoting: 'REFIDX_question' })
+  expect(gateway.sent[1]!.content).toEqual({ type: 'markdown', text: 'b'.repeat(1500) })
+  // Quoting does not change which message the Passive reply answers: still the latest.
+  expect(gateway.sent[0]!.answering).toEqual({ messageId: later.messageId, sequence: 1 })
+})
+
+test('the plain-text resend of a rejected Markdown message keeps the quote', async () => {
+  const { gateway, callTool } = await startWithPairedSender('SENDER1')
+  const question = { ...messageFrom('SENDER1', 'is the build green?'), quoteRef: 'REFIDX_question' }
+  gateway.receive(question)
+  await settle()
+  gateway.refuse = attempt => (attempt.content.type === 'markdown' ? new Error('markdown not allowed') : undefined)
+
+  await callTool('reply', { chat_id: 'SENDER1', reply_to: question.messageId, text: 'yes' })
+
+  expect(gateway.sent[0]!.content).toEqual({ type: 'text', text: 'yes', quoting: 'REFIDX_question' })
+})
+
+test('a reply_to the Channel cannot quote is sent without a quote, and the result says so', async () => {
+  const { gateway, callTool, stateDir, clock } = await startWithPairedSender('SENDER1')
+  gateway.receive(messageFrom('SENDER2'))
+  await settle()
+  approvePairing(stateDir, gateway.sent.at(-1)!.text!.match(/pair ([0-9a-f]{6})/)![1]!, clock.now)
+  await settle()
+  const others = { ...messageFrom('SENDER2', 'hello'), quoteRef: 'REFIDX_others' }
+  const unquotable = messageFrom('SENDER1', 'no index on this one')
+  gateway.receive(others)
+  gateway.receive(unquotable)
+  await settle()
+  gateway.sent.length = 0
+
+  // Forgotten or never seen, another Sender's message, and one QQ gave no index for.
+  for (const replyTo of ['msg-from-yesterday', others.messageId, unquotable.messageId]) {
+    const result = await callTool('reply', { chat_id: 'SENDER1', reply_to: replyTo, text: 'done' })
+    expect(result.isError).toBe(false)
+    expect(result.text).toContain('without the quote')
+  }
+  expect(gateway.sent).toHaveLength(3)
+  for (const message of gateway.sent) expect(message.content).toEqual({ type: 'markdown', text: 'done' })
+})
+
+test('a reply without reply_to quotes nothing', async () => {
+  const { gateway, callTool } = await startWithPairedSender('SENDER1')
+  gateway.receive({ ...messageFrom('SENDER1', 'hello'), quoteRef: 'REFIDX_hello' })
+  await settle()
+
+  const result = await callTool('reply', { chat_id: 'SENDER1', text: 'hi' })
+
+  expect(gateway.sent[0]!.content).toEqual({ type: 'markdown', text: 'hi' })
+  expect(result.text).not.toContain('quote')
 })

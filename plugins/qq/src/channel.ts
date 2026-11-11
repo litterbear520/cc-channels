@@ -4,7 +4,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import { decide, isAllowed, newPairingCode as randomPairingCode, readAccess, takeApprovedSenders } from './access.ts'
 import { MAX_MESSAGE_LENGTH, splitText } from './chunk.ts'
 import { readCredentials } from './credentials.ts'
-import { CredentialsRejectedError, type InboundMessage, type OutboundContent, type OutboundFile, type QQGateway } from './gateway.ts'
+import { CredentialsRejectedError, type InboundMessage, type OutboundContent, type OutboundFile, type QQGateway, type QuoteRef } from './gateway.ts'
 import { createInbox, describeAttachments } from './inbox.ts'
 import { readFilesToSend } from './outbound-files.ts'
 import { parseVerdict, permissionPrompt, readPermissionRequest, type PermissionRequest } from './permission.ts'
@@ -36,8 +36,9 @@ const INSTRUCTIONS = [
     'The person writing reads QQ, not this terminal.',
   'Anything you want them to see must be sent with the reply tool, passing the chat_id from the tag: ' +
     'what you write in the terminal never reaches QQ. Write the text as Markdown; long text is split into ' +
-    'several messages for you. To send an image or a file, pass its absolute path in files; one of over ' +
-    '5 MB is refused, so offer another way to deliver it.',
+    'several messages for you. Pass a message_id as reply_to only when it would be unclear which message ' +
+    'you are answering; QQ then shows your answer as quoting it. To send an image or a file, pass its ' +
+    'absolute path in files; one of over 5 MB is refused, so offer another way to deliver it.',
   'A tag with attachment_count carries images or files that have not been downloaded. Call ' +
     'download_attachment with the tag\'s chat_id and message_id to save them locally, then read the paths it ' +
     'returns. Only recent messages can be fetched this way, and none from before a restart.',
@@ -75,6 +76,12 @@ const TOOLS = [
       properties: {
         chat_id: { type: 'string', description: 'The chat_id of the inbound message being answered.' },
         text: { type: 'string', description: 'The message, as Markdown. May be empty when files are given.' },
+        reply_to: {
+          type: 'string',
+          description:
+            'Optional. The message_id of an inbound message to quote: QQ then shows the answer as a reply to ' +
+            'it. Use it when it is unclear which message you are answering. Only recent messages can be quoted.',
+        },
         files: {
           type: 'array',
           items: { type: 'string' },
@@ -161,7 +168,14 @@ export function createChannel({
     try {
       switch (request.params.name) {
         case 'reply':
-          return said(await reply(String(args.chat_id ?? ''), String(args.text ?? ''), stringList(args.files)))
+          return said(
+            await reply({
+              chatId: String(args.chat_id ?? ''),
+              text: String(args.text ?? ''),
+              filePaths: stringList(args.files),
+              ...(typeof args.reply_to === 'string' && args.reply_to ? { replyTo: args.reply_to } : {}),
+            }),
+          )
         case 'download_attachment':
           return said(await downloadAttachment(String(args.chat_id ?? ''), String(args.message_id ?? '')))
         default:
@@ -208,8 +222,22 @@ export function createChannel({
     }
   }
 
-  async function reply(chatId: string, text: string, filePaths: string[]): Promise<string> {
+  async function reply({
+    chatId,
+    text,
+    filePaths,
+    replyTo,
+  }: {
+    chatId: string
+    text: string
+    filePaths: string[]
+    /** The ID of the inbound message the answer should quote. */
+    replyTo?: string
+  }): Promise<string> {
     assertAllowed(chatId)
+    // Another Sender's message is treated like a forgotten one.
+    const quotable = replyTo === undefined ? undefined : quotableMessages.get(replyTo)
+    const quoting = quotable?.senderId === chatId ? quotable.quoteRef : undefined
     let files: OutboundFile[]
     try {
       files = readFilesToSend(stateDir, filePaths)
@@ -222,7 +250,14 @@ export function createChannel({
     const parts = [
       ...chunks.map((chunk, index) => ({
         label: chunks.length === 1 ? 'the text' : `part ${index + 1} of ${chunks.length} of the text`,
-        send: () => replies.deliver(chatId, [{ type: 'markdown', text: chunk }, { type: 'text', text: chunk }]),
+        send: () => {
+          // Only the first message of a long answer carries the quote.
+          const quote = index === 0 && quoting ? { quoting } : {}
+          return replies.deliver(chatId, [
+            { type: 'markdown', text: chunk, ...quote },
+            { type: 'text', text: chunk, ...quote },
+          ])
+        },
       })),
       ...files.map(file => ({
         label: file.name,
@@ -242,7 +277,11 @@ export function createChannel({
         throw new Error(`${part.label} was not sent${before}: ${scrub(error)}${after}`)
       }
     }
-    return describeSent(sentIds)
+    const unquoted =
+      replyTo !== undefined && !quoting
+        ? '; without the quote, because the Channel has no quoting index for that message (it keeps them for recent messages only, and not across a restart)'
+        : ''
+    return describeSent(sentIds) + unquoted
   }
 
   async function downloadAttachment(chatId: string, messageId: string): Promise<string> {
@@ -252,6 +291,15 @@ export function createChannel({
   }
 
   const reportingFailed = (error: unknown) => log(`could not report a connection problem: ${error}`)
+
+  /** What is needed to quote recent inbound messages, by message ID. Kept in memory, like the attachments. */
+  const quotableMessages = new Map<string, { senderId: string; quoteRef: QuoteRef }>()
+  function rememberForQuoting(message: InboundMessage): void {
+    if (!message.quoteRef) return
+    quotableMessages.set(message.messageId, { senderId: message.senderId, quoteRef: message.quoteRef })
+    // A Map iterates in insertion order, so this forgets the oldest.
+    if (quotableMessages.size > REMEMBERED_MESSAGE_IDS) quotableMessages.delete(quotableMessages.keys().next().value!)
+  }
 
   const seenMessageIds = new Set<string>()
   /** True the first time a message ID is seen. */
@@ -293,6 +341,7 @@ export function createChannel({
       return
     }
     inbox.remember(message)
+    rememberForQuoting(message)
     await initialized
     await mcp.notification({
       method: 'notifications/claude/channel',

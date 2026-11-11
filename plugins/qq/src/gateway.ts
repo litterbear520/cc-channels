@@ -51,6 +51,8 @@ export interface InboundMessage {
   text: string
   /** When the Sender wrote it, as QQ reports it (ISO 8601). */
   timestamp: string
+  /** What an answer needs in order to quote this message, when QQ supplies it. */
+  quoteRef?: QuoteRef
   /** Images and files sent with the message; empty when there are none. */
   attachments: InboundAttachment[]
 }
@@ -68,10 +70,17 @@ export interface InboundAttachment {
 
 /** What one outbound message carries. QQ renders `markdown` in a Direct chat and shows `text` as written. */
 export type OutboundContent =
-  | { type: 'text'; text: string }
-  | { type: 'markdown'; text: string }
+  | { type: 'text'; text: string; quoting?: QuoteRef }
+  | { type: 'markdown'; text: string; quoting?: QuoteRef }
   /** A file uploaded earlier with `upload`, named by the reference QQ returned for it. */
   | { type: 'media'; fileInfo: string }
+
+/**
+ * QQ's index for showing a message as quoted by another. It is not the message
+ * ID: QQ hands it out with each inbound message, and a message sent with one
+ * in `quoting` is displayed in the Direct chat as an answer to that message.
+ */
+export type QuoteRef = string
 
 /** A local file on its way to a Sender. */
 export interface OutboundFile {
