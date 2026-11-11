@@ -1,11 +1,25 @@
 import type { Credentials } from '../src/credentials.ts'
-import type { GatewayEvents, InboundMessage, PassiveReplyTarget, QQGateway } from '../src/gateway.ts'
+import type {
+  GatewayEvents,
+  InboundMessage,
+  OutboundContent,
+  PassiveReplyTarget,
+  QQGateway,
+} from '../src/gateway.ts'
 
-export interface SentText {
+/** One message the Channel asked QQ to send. */
+export interface SendAttempt {
   senderId: string
-  text: string
-  /** Set when the text went out as a Passive reply. */
+  content: OutboundContent
+  /** The text of a text or Markdown message. */
+  text?: string
+  /** Set when the message went out as a Passive reply. */
   answering?: PassiveReplyTarget
+}
+
+export interface SentMessage extends SendAttempt {
+  /** The message ID QQ returned. */
+  id: string
 }
 
 /** In-memory QQ gateway. Tests drive the Channel through it instead of a real bot. */
@@ -15,10 +29,12 @@ export class FakeQQGateway implements QQGateway {
   connectAttempts = 0
   /** Set to make QQ refuse the next connection. */
   failNextConnectWith: Error | undefined
-  /** Set to make QQ refuse the next message the Channel sends. */
-  failNextSendWith: Error | undefined
-  /** Everything the Channel sent to QQ, in order. */
-  sent: SentText[] = []
+  /** Set to make QQ refuse every message for which this returns an error. */
+  refuse: (attempt: SendAttempt) => Error | undefined = () => undefined
+  /** Every message the Channel asked QQ to send, refused ones included, in order. */
+  attempts: SendAttempt[] = []
+  /** The messages QQ accepted, in order. */
+  sent: SentMessage[] = []
 
   private events: GatewayEvents | undefined
 
@@ -44,13 +60,19 @@ export class FakeQQGateway implements QQGateway {
     this.events?.onLost(error)
   }
 
-  async sendText(senderId: string, text: string, answering?: PassiveReplyTarget): Promise<void> {
-    const failure = this.failNextSendWith
-    if (failure) {
-      this.failNextSendWith = undefined
-      throw failure
+  async send(senderId: string, content: OutboundContent, answering?: PassiveReplyTarget): Promise<string> {
+    const attempt: SendAttempt = {
+      senderId,
+      content,
+      ...('text' in content ? { text: content.text } : {}),
+      ...(answering ? { answering } : {}),
     }
-    this.sent.push({ senderId, text, ...(answering ? { answering } : {}) })
+    this.attempts.push(attempt)
+    const failure = this.refuse(attempt)
+    if (failure) throw failure
+    const id = `sent-${this.sent.length + 1}`
+    this.sent.push({ ...attempt, id })
+    return id
   }
 
   async close(): Promise<void> {

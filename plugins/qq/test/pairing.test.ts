@@ -2,36 +2,9 @@ import { expect, test } from 'bun:test'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { approvePairing, removeSender, setPolicy } from '../src/access.ts'
-import type { InboundMessage } from '../src/gateway.ts'
-import { settle, startChannel } from './start-channel.ts'
+import { messageFrom, settle, startChannel, startConnected, startWithPairedSender } from './start-channel.ts'
 
 const HOUR_MS = 60 * 60 * 1000
-
-let messageCount = 0
-/** A Direct chat message from the given Sender, with an ID of its own. */
-function messageFrom(senderId: string, text = '你好'): InboundMessage {
-  messageCount++
-  return { messageId: `msg-${messageCount}`, senderId, text, timestamp: '2026-11-11T09:00:00+08:00' }
-}
-
-/** Starts a connected Channel whose session has finished its handshake. */
-async function startConnected(options: Parameters<typeof startChannel>[0] = {}) {
-  const started = await startChannel(options)
-  await started.initialize()
-  await settle()
-  return started
-}
-
-/** Starts a Channel with one Sender already paired. */
-async function startWithPairedSender(senderId: string) {
-  const started = await startConnected({ pairingCodes: ['a1b2c3'] })
-  started.gateway.receive(messageFrom(senderId))
-  await settle()
-  approvePairing(started.stateDir, 'a1b2c3', started.clock.now)
-  await settle()
-  started.gateway.sent.length = 0
-  return started
-}
 
 test('an unknown Sender is answered with a Pairing code in Chinese and is not delivered to Claude', async () => {
   const { gateway, events } = await startConnected({ pairingCodes: ['a1b2c3'] })
@@ -68,8 +41,8 @@ test('approving the code lets the Sender in and confirms it in the Direct chat',
   expect(gateway.sent).toHaveLength(2)
   expect(gateway.sent[1]!.senderId).toBe('SENDER1')
   expect(gateway.sent[1]!.text).toContain('配对成功')
-  // Nothing to answer, so it is a Proactive message.
-  expect(gateway.sent[1]!.answering).toBeUndefined()
+  // Still inside the window of the message that asked for the Pairing, so it is a second Passive reply to it.
+  expect(gateway.sent[1]!.answering).toEqual({ messageId: gateway.sent[0]!.answering!.messageId, sequence: 2 })
 
   gateway.receive(messageFrom('SENDER1', 'run the tests'))
   await settle()
@@ -210,7 +183,7 @@ test('the instructions tell Claude that access is changed only by the user in th
 
 test('a message whose Pairing answer could not be sent is not taken for a duplicate when QQ redelivers it', async () => {
   const { gateway, logged } = await startConnected({ pairingCodes: ['a1b2c3'] })
-  gateway.failNextSendWith = new Error('QQ is unreachable')
+  gateway.refuse = () => new Error('QQ is unreachable')
 
   const message = messageFrom('SENDER1')
   gateway.receive(message)
@@ -218,6 +191,7 @@ test('a message whose Pairing answer could not be sent is not taken for a duplic
   expect(gateway.sent).toHaveLength(0)
   expect(logged.join('\n')).toContain('QQ is unreachable')
 
+  gateway.refuse = () => undefined
   gateway.receive({ ...message })
   await settle()
   expect(gateway.sent).toHaveLength(1)

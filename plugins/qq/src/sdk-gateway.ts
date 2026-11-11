@@ -4,6 +4,7 @@ import type { Credentials } from './credentials.ts'
 import {
   CredentialsRejectedError,
   type GatewayEvents,
+  type OutboundContent,
   type PassiveReplyTarget,
   type QQGateway,
 } from './gateway.ts'
@@ -11,6 +12,16 @@ import {
 const USER_AGENT = 'claude-channel-qq/0.0.1'
 /** The group-and-direct-chat event group. Subscribing to it needs no approval from QQ. */
 const GROUP_AND_DIRECT_CHAT_INTENT = 1 << 25
+
+/** The fields of QQ's send-message request that depend on what is sent. */
+function messageBody(content: OutboundContent): Record<string, unknown> {
+  switch (content.type) {
+    case 'text':
+      return { msg_type: 0, content: content.text }
+    case 'markdown':
+      return { msg_type: 2, markdown: { content: content.text } }
+  }
+}
 
 /**
  * The real QQ gateway, on the official SDK's low-level protocol entry. The SDK
@@ -153,13 +164,13 @@ export function createSdkGateway({
       }
     },
 
-    async sendText(senderId: string, text: string, answering?: PassiveReplyTarget): Promise<void> {
+    async send(senderId: string, content: OutboundContent, answering?: PassiveReplyTarget): Promise<string> {
       if (!live) throw new Error('not connected to QQ')
-      await live.request('POST', `/v2/users/${encodeURIComponent(senderId)}/messages`, {
-        msg_type: 0,
-        content: text,
+      const sent = (await live.request('POST', `/v2/users/${encodeURIComponent(senderId)}/messages`, {
+        ...messageBody(content),
         ...(answering ? { msg_id: answering.messageId, msg_seq: answering.sequence } : {}),
-      })
+      })) as { id?: string } | undefined
+      return sent?.id ?? ''
     },
 
     async close(): Promise<void> {

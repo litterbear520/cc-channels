@@ -20,11 +20,11 @@ export interface QQGateway {
    */
   connect(credentials: Credentials, events: GatewayEvents): Promise<void>
   /**
-   * Sends plain text to a Sender's Direct chat: as a Passive reply when
+   * Sends one message to a Sender's Direct chat: as a Passive reply when
    * `answering` names an inbound message, otherwise as a Proactive message.
-   * Rejects when QQ does not accept the message.
+   * Resolves with the ID QQ gave the message; rejects when QQ does not accept it.
    */
-  sendText(senderId: string, text: string, answering?: PassiveReplyTarget): Promise<void>
+  send(senderId: string, content: OutboundContent, answering?: PassiveReplyTarget): Promise<string>
   /** Closes the connection. Safe to call when not connected. */
   close(): Promise<void>
 }
@@ -44,6 +44,9 @@ export interface InboundMessage {
   /** When the Sender wrote it, as QQ reports it (ISO 8601). */
   timestamp: string
 }
+
+/** What one outbound message carries. QQ renders `markdown` in a Direct chat and shows `text` as written. */
+export type OutboundContent = { type: 'text'; text: string } | { type: 'markdown'; text: string }
 
 export interface PassiveReplyTarget {
   messageId: string

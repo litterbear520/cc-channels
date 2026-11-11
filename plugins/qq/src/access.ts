@@ -131,6 +131,11 @@ export function decide(stateDir: string, senderId: string, now: number, makeCode
   })
 }
 
+/** True when the Sender is on the allowlist. */
+export function isAllowed(stateDir: string, senderId: string): boolean {
+  return readAccess(stateDir).allowFrom.includes(senderId)
+}
+
 /**
  * Approves a pending Pairing: the Sender joins the allowlist, and a marker is
  * left for the Channel, which sends the confirmation. Returns the Sender ID,

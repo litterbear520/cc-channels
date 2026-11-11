@@ -3,8 +3,10 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
+import { approvePairing } from '../src/access.ts'
 import { createChannel } from '../src/channel.ts'
 import { saveCredentials, type Credentials } from '../src/credentials.ts'
+import type { InboundMessage } from '../src/gateway.ts'
 import { FakeQQGateway } from './fake-gateway.ts'
 
 const stateDirs: string[] = []
@@ -75,11 +77,44 @@ export async function startChannel({
     return result
   }
 
+  /** Calls one of the Channel's tools, as Claude would. Resolves with the text it returned. */
+  async function callTool(name: string, args: Record<string, unknown>): Promise<{ text: string; isError: boolean }> {
+    const result = await request('tools/call', { name, arguments: args })
+    return { text: result.content.map((part: { text: string }) => part.text).join('\n'), isError: result.isError === true }
+  }
+
   await claudeCodeSide.start()
   await channel.start(channelSide)
-  return { channel, gateway, stateDir, clock, logged, events, request, initialize }
+  return { channel, gateway, stateDir, clock, logged, events, request, initialize, callTool }
 }
 
 /** Lets the Channel's background work (connecting, pushing events) run. */
 export const settle = () => Bun.sleep(15)
 
+
+let messageCount = 0
+/** A Direct chat message from the given Sender, with an ID of its own. */
+export function messageFrom(senderId: string, text = '你好'): InboundMessage {
+  messageCount++
+  return { messageId: `msg-${messageCount}`, senderId, text, timestamp: '2026-11-11T09:00:00+08:00' }
+}
+
+/** Starts a connected Channel whose session has finished its handshake. */
+export async function startConnected(options: Parameters<typeof startChannel>[0] = {}) {
+  const started = await startChannel(options)
+  await started.initialize()
+  await settle()
+  return started
+}
+
+/** Starts a Channel with one Sender already paired. */
+export async function startWithPairedSender(senderId: string) {
+  const started = await startConnected({ pairingCodes: ['a1b2c3'] })
+  started.gateway.receive(messageFrom(senderId))
+  await settle()
+  approvePairing(started.stateDir, 'a1b2c3', started.clock.now)
+  await settle()
+  started.gateway.sent.length = 0
+  started.gateway.attempts.length = 0
+  return started
+}
