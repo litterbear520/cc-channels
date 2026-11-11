@@ -54,7 +54,7 @@ test('approving the code lets the Sender in and confirms it in the Direct chat',
 test("a paired Sender's text arrives with the conversation, message, Sender and time in its meta", async () => {
   const { gateway, events } = await startWithPairedSender('SENDER1')
 
-  gateway.receive({ messageId: 'msg-x', senderId: 'SENDER1', text: 'hello', timestamp: '2026-11-11T09:00:05+08:00' })
+  gateway.receive({ messageId: 'msg-x', senderId: 'SENDER1', text: 'hello', timestamp: '2026-11-11T09:00:05+08:00', attachments: [] })
   await settle()
 
   expect(events).toEqual([

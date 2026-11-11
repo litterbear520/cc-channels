@@ -36,6 +36,9 @@ export class FakeQQGateway implements QQGateway {
   /** The messages QQ accepted, in order. */
   sent: SentMessage[] = []
 
+  /** The attachments QQ serves, keyed by URL. */
+  downloadable = new Map<string, Uint8Array>()
+
   private events: GatewayEvents | undefined
 
   async connect(credentials: Credentials, events: GatewayEvents): Promise<void> {
@@ -73,6 +76,12 @@ export class FakeQQGateway implements QQGateway {
     const id = `sent-${this.sent.length + 1}`
     this.sent.push({ ...attempt, id })
     return id
+  }
+
+  async download(url: string): Promise<Uint8Array> {
+    const bytes = this.downloadable.get(url)
+    if (!bytes) throw new Error('QQ answered 404 for the attachment')
+    return bytes
   }
 
   async close(): Promise<void> {

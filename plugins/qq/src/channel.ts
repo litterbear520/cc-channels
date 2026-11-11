@@ -5,6 +5,7 @@ import { decide, isAllowed, newPairingCode as randomPairingCode, takeApprovedSen
 import { MAX_MESSAGE_LENGTH, splitText } from './chunk.ts'
 import { readCredentials } from './credentials.ts'
 import { CredentialsRejectedError, type InboundMessage, type OutboundContent, type QQGateway } from './gateway.ts'
+import { createInbox, describeAttachments } from './inbox.ts'
 import { createReplyPolicy } from './reply-policy.ts'
 
 export interface Channel {
@@ -34,6 +35,9 @@ const INSTRUCTIONS = [
   'Anything you want them to see must be sent with the reply tool, passing the chat_id from the tag: ' +
     'what you write in the terminal never reaches QQ. Write the text as Markdown; long text is split into ' +
     'several messages for you.',
+  'A tag with attachment_count carries images or files that have not been downloaded. Call ' +
+    'download_attachment with the tag\'s chat_id and message_id to save them locally, then read the paths it ' +
+    'returns. Only recent messages can be fetched this way, and none from before a restart.',
   'QQ offers a bot no way to edit a message it has sent, to add a reaction, or to look up history in a ' +
     'Direct chat, so do not promise or attempt them. To correct something, send a new message. If you need ' +
     'earlier context, ask the person to send it again.',
@@ -67,6 +71,21 @@ const TOOLS = [
         text: { type: 'string', description: 'The message, as Markdown.' },
       },
       required: ['chat_id', 'text'],
+    },
+  },
+  {
+    name: 'download_attachment',
+    description:
+      'Download the images and files of one inbound QQ message into the local inbox directory and return ' +
+      'their paths, one per line. Use it when the inbound <channel> tag has attachment_count. Only recent ' +
+      'messages can be fetched, and none from before the Channel last started.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        chat_id: { type: 'string', description: 'The chat_id of the inbound message.' },
+        message_id: { type: 'string', description: 'The message_id of the inbound message.' },
+      },
+      required: ['chat_id', 'message_id'],
     },
   },
 ]
@@ -111,6 +130,7 @@ export function createChannel({
   }
 
   const replies = createReplyPolicy({ gateway, now })
+  const inbox = createInbox({ gateway, stateDir, now })
 
   mcp.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }))
   mcp.setRequestHandler(CallToolRequestSchema, async request => {
@@ -119,6 +139,8 @@ export function createChannel({
       switch (request.params.name) {
         case 'reply':
           return said(await reply(String(args.chat_id ?? ''), String(args.text ?? '')))
+        case 'download_attachment':
+          return said(await downloadAttachment(String(args.chat_id ?? ''), String(args.message_id ?? '')))
         default:
           throw new Error(`unknown tool: ${request.params.name}`)
       }
@@ -148,6 +170,12 @@ export function createChannel({
       }
     }
     return describeSent(sentIds)
+  }
+
+  async function downloadAttachment(chatId: string, messageId: string): Promise<string> {
+    assertAllowed(chatId)
+    const paths = await inbox.download(chatId, messageId)
+    return `downloaded ${paths.length} ${paths.length === 1 ? 'attachment' : 'attachments'}:\n${paths.join('\n')}`
   }
 
   const reportingFailed = (error: unknown) => log(`could not report a connection problem: ${error}`)
@@ -181,17 +209,20 @@ export function createChannel({
       await replies.deliver(message.senderId, plain(pairingText(decision.code, decision.reminder)))
       return
     }
+    inbox.remember(message)
     await initialized
     await mcp.notification({
       method: 'notifications/claude/channel',
       params: {
-        content: message.text,
+        // An image or a file sent alone has no text, and an event needs some.
+        content: message.text || '(attachment)',
         meta: {
           // In a Direct chat the conversation is identified by its Sender.
           chat_id: message.senderId,
           message_id: message.messageId,
           sender_id: message.senderId,
           ts: message.timestamp,
+          ...(message.attachments.length > 0 ? describeAttachments(message.attachments) : {}),
         },
       },
     })

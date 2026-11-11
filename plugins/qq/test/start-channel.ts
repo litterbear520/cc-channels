@@ -96,7 +96,7 @@ let messageCount = 0
 /** A Direct chat message from the given Sender, with an ID of its own. */
 export function messageFrom(senderId: string, text = '你好'): InboundMessage {
   messageCount++
-  return { messageId: `msg-${messageCount}`, senderId, text, timestamp: '2026-11-11T09:00:00+08:00' }
+  return { messageId: `msg-${messageCount}`, senderId, text, timestamp: '2026-11-11T09:00:00+08:00', attachments: [] }
 }
 
 /** Starts a connected Channel whose session has finished its handshake. */

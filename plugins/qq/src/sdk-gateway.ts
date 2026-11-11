@@ -139,6 +139,12 @@ export function createSdkGateway({
             senderId: message.senderId,
             text: message.content,
             timestamp: message.timestamp,
+            attachments: (message.attachments ?? []).map(attachment => ({
+              url: attachment.url,
+              contentType: attachment.content_type,
+              ...(attachment.filename ? { name: attachment.filename } : {}),
+              ...(attachment.size !== undefined ? { size: attachment.size } : {}),
+            })),
           })
         },
       })
@@ -171,6 +177,13 @@ export function createSdkGateway({
         ...(answering ? { msg_id: answering.messageId, msg_seq: answering.sequence } : {}),
       })) as { id?: string } | undefined
       return sent?.id ?? ''
+    },
+
+    async download(url: string): Promise<Uint8Array> {
+      // QQ serves attachment URLs without an Authorization header, so the access token is not sent.
+      const response = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
+      if (!response.ok) throw new Error(`QQ answered ${response.status} for the attachment`)
+      return new Uint8Array(await response.arrayBuffer())
     },
 
     async close(): Promise<void> {

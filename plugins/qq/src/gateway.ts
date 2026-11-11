@@ -25,6 +25,8 @@ export interface QQGateway {
    * Resolves with the ID QQ gave the message; rejects when QQ does not accept it.
    */
   send(senderId: string, content: OutboundContent, answering?: PassiveReplyTarget): Promise<string>
+  /** Fetches an inbound attachment's bytes. Rejects when QQ no longer serves the URL. */
+  download(url: string): Promise<Uint8Array>
   /** Closes the connection. Safe to call when not connected. */
   close(): Promise<void>
 }
@@ -43,6 +45,19 @@ export interface InboundMessage {
   text: string
   /** When the Sender wrote it, as QQ reports it (ISO 8601). */
   timestamp: string
+  /** Images and files sent with the message; empty when there are none. */
+  attachments: InboundAttachment[]
+}
+
+/** A reference to an image or file a Sender sent. The bytes stay with QQ until downloaded. */
+export interface InboundAttachment {
+  url: string
+  /** QQ's label: a MIME type such as `image/jpeg`, or `file`, `voice`. */
+  contentType: string
+  /** The Sender's file name. QQ replaces an image's name with one of its own. */
+  name?: string
+  /** Size in bytes, when QQ reports it. */
+  size?: number
 }
 
 /** What one outbound message carries. QQ renders `markdown` in a Direct chat and shows `text` as written. */
