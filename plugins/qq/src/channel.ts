@@ -4,8 +4,9 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import { decide, isAllowed, newPairingCode as randomPairingCode, takeApprovedSenders } from './access.ts'
 import { MAX_MESSAGE_LENGTH, splitText } from './chunk.ts'
 import { readCredentials } from './credentials.ts'
-import { CredentialsRejectedError, type InboundMessage, type OutboundContent, type QQGateway } from './gateway.ts'
+import { CredentialsRejectedError, type InboundMessage, type OutboundContent, type OutboundFile, type QQGateway } from './gateway.ts'
 import { createInbox, describeAttachments } from './inbox.ts'
+import { readFilesToSend } from './outbound-files.ts'
 import { createReplyPolicy } from './reply-policy.ts'
 
 export interface Channel {
@@ -34,7 +35,8 @@ const INSTRUCTIONS = [
     'The person writing reads QQ, not this terminal.',
   'Anything you want them to see must be sent with the reply tool, passing the chat_id from the tag: ' +
     'what you write in the terminal never reaches QQ. Write the text as Markdown; long text is split into ' +
-    'several messages for you.',
+    'several messages for you. To send an image or a file, pass its absolute path in files; one of over ' +
+    '5 MB is refused, so offer another way to deliver it.',
   'A tag with attachment_count carries images or files that have not been downloaded. Call ' +
     'download_attachment with the tag\'s chat_id and message_id to save them locally, then read the paths it ' +
     'returns. Only recent messages can be fetched this way, and none from before a restart.',
@@ -62,13 +64,21 @@ const TOOLS = [
     name: 'reply',
     description:
       'Send a message to a QQ Direct chat. Pass the chat_id from the inbound <channel> tag. The text is sent ' +
-      `as Markdown, and text over ${MAX_MESSAGE_LENGTH} characters is split into several messages. Returns the ` +
+      `as Markdown, and text over ${MAX_MESSAGE_LENGTH} characters is split into several messages. Local files ` +
+      'can be attached with files. Returns the ' +
       'IDs of the messages sent, or an error saying why QQ did not take them; nothing is retried later.',
     inputSchema: {
       type: 'object',
       properties: {
         chat_id: { type: 'string', description: 'The chat_id of the inbound message being answered.' },
-        text: { type: 'string', description: 'The message, as Markdown.' },
+        text: { type: 'string', description: 'The message, as Markdown. May be empty when files are given.' },
+        files: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'Absolute paths of local files to send after the text, each as a message of its own. At most 5 MB ' +
+            'each. A .png, .jpg or .jpeg is shown as an image; anything else arrives as a file.',
+        },
       },
       required: ['chat_id', 'text'],
     },
@@ -91,6 +101,9 @@ const TOOLS = [
 ]
 
 const PAIRED_TEXT = '配对成功，现在可以直接给 Claude 发消息了。'
+
+/** A tool argument that should be a list of strings. Anything else counts as an empty list. */
+const stringList = (value: unknown): string[] => (Array.isArray(value) ? value.map(String) : [])
 
 const said = (text: string) => ({ content: [{ type: 'text', text }] })
 
@@ -138,7 +151,7 @@ export function createChannel({
     try {
       switch (request.params.name) {
         case 'reply':
-          return said(await reply(String(args.chat_id ?? ''), String(args.text ?? '')))
+          return said(await reply(String(args.chat_id ?? ''), String(args.text ?? ''), stringList(args.files)))
         case 'download_attachment':
           return said(await downloadAttachment(String(args.chat_id ?? ''), String(args.message_id ?? '')))
         default:
@@ -156,17 +169,37 @@ export function createChannel({
     }
   }
 
-  async function reply(chatId: string, text: string): Promise<string> {
+  async function reply(chatId: string, text: string, filePaths: string[]): Promise<string> {
     assertAllowed(chatId)
+    let files: OutboundFile[]
+    try {
+      files = readFilesToSend(stateDir, filePaths)
+    } catch (error) {
+      throw new Error(`${scrub(error)}; nothing was sent`)
+    }
     const chunks = splitText(text)
-    if (chunks.length === 0) throw new Error('there is no text to send')
+    // Each part is one QQ message: the text in order, then the files in order.
+    const parts = [
+      ...chunks.map((chunk, index) => ({
+        label: chunks.length === 1 ? 'the text' : `part ${index + 1} of ${chunks.length} of the text`,
+        send: () => replies.deliver(chatId, [{ type: 'markdown', text: chunk }, { type: 'text', text: chunk }]),
+      })),
+      ...files.map(file => ({
+        label: file.name,
+        send: async () => replies.deliver(chatId, [{ type: 'media', fileInfo: await gateway.upload(chatId, file) }]),
+      })),
+    ]
+    if (parts.length === 0) throw new Error('there is no text and no file to send')
+
     const sentIds: string[] = []
-    for (const chunk of chunks) {
+    for (const part of parts) {
       try {
-        sentIds.push(await replies.deliver(chatId, [{ type: 'markdown', text: chunk }, { type: 'text', text: chunk }]))
+        sentIds.push(await part.send())
       } catch (error) {
-        const before = sentIds.length > 0 ? ` after ${describeSent(sentIds)}` : ''
-        throw new Error(`message ${sentIds.length + 1} of ${chunks.length} was not sent${before}: ${scrub(error)}`)
+        const before = sentIds.length > 0 ? `, after ${describeSent(sentIds)}` : ''
+        const rest = parts.length - sentIds.length - 1
+        const after = rest > 0 ? `; the ${rest} ${rest === 1 ? 'message' : 'messages'} after it were not tried` : ''
+        throw new Error(`${part.label} was not sent${before}: ${scrub(error)}${after}`)
       }
     }
     return describeSent(sentIds)

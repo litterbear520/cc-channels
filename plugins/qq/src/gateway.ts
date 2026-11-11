@@ -25,6 +25,12 @@ export interface QQGateway {
    * Resolves with the ID QQ gave the message; rejects when QQ does not accept it.
    */
   send(senderId: string, content: OutboundContent, answering?: PassiveReplyTarget): Promise<string>
+  /**
+   * Uploads a file for one Sender's Direct chat and resolves with QQ's
+   * reference to it, which a `media` message then sends. Rejects when QQ does
+   * not take the file.
+   */
+  upload(senderId: string, file: OutboundFile): Promise<string>
   /** Fetches an inbound attachment's bytes. Rejects when QQ no longer serves the URL. */
   download(url: string): Promise<Uint8Array>
   /** Closes the connection. Safe to call when not connected. */
@@ -61,7 +67,20 @@ export interface InboundAttachment {
 }
 
 /** What one outbound message carries. QQ renders `markdown` in a Direct chat and shows `text` as written. */
-export type OutboundContent = { type: 'text'; text: string } | { type: 'markdown'; text: string }
+export type OutboundContent =
+  | { type: 'text'; text: string }
+  | { type: 'markdown'; text: string }
+  /** A file uploaded earlier with `upload`, named by the reference QQ returned for it. */
+  | { type: 'media'; fileInfo: string }
+
+/** A local file on its way to a Sender. */
+export interface OutboundFile {
+  data: Uint8Array
+  /** The name the Sender sees for a file. QQ shows an image without one. */
+  name: string
+  /** `image` is displayed in the conversation; `file` arrives as a download. */
+  kind: 'image' | 'file'
+}
 
 export interface PassiveReplyTarget {
   messageId: string

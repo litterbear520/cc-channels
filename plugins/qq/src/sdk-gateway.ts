@@ -5,6 +5,7 @@ import {
   CredentialsRejectedError,
   type GatewayEvents,
   type OutboundContent,
+  type OutboundFile,
   type PassiveReplyTarget,
   type QQGateway,
 } from './gateway.ts'
@@ -13,6 +14,9 @@ const USER_AGENT = 'claude-channel-qq/0.0.1'
 /** The group-and-direct-chat event group. Subscribing to it needs no approval from QQ. */
 const GROUP_AND_DIRECT_CHAT_INTENT = 1 << 25
 
+const QQ_FILE_TYPE_IMAGE = 1
+const QQ_FILE_TYPE_FILE = 4
+
 /** The fields of QQ's send-message request that depend on what is sent. */
 function messageBody(content: OutboundContent): Record<string, unknown> {
   switch (content.type) {
@@ -20,6 +24,8 @@ function messageBody(content: OutboundContent): Record<string, unknown> {
       return { msg_type: 0, content: content.text }
     case 'markdown':
       return { msg_type: 2, markdown: { content: content.text } }
+    case 'media':
+      return { msg_type: 7, media: { file_info: content.fileInfo } }
   }
 }
 
@@ -177,6 +183,19 @@ export function createSdkGateway({
         ...(answering ? { msg_id: answering.messageId, msg_seq: answering.sequence } : {}),
       })) as { id?: string } | undefined
       return sent?.id ?? ''
+    },
+
+    async upload(senderId: string, file: OutboundFile): Promise<string> {
+      if (!live) throw new Error('not connected to QQ')
+      // QQ's direct upload: the bytes travel base64-encoded in the request body.
+      const uploaded = (await live.request('POST', `/v2/users/${encodeURIComponent(senderId)}/files`, {
+        file_type: file.kind === 'image' ? QQ_FILE_TYPE_IMAGE : QQ_FILE_TYPE_FILE,
+        srv_send_msg: false,
+        file_data: Buffer.from(file.data).toString('base64'),
+        ...(file.kind === 'file' ? { file_name: file.name } : {}),
+      })) as { file_info?: string } | undefined
+      if (!uploaded?.file_info) throw new Error('QQ took the upload but returned no reference to the file')
+      return uploaded.file_info
     },
 
     async download(url: string): Promise<Uint8Array> {

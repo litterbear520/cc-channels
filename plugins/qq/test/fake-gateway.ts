@@ -3,6 +3,7 @@ import type {
   GatewayEvents,
   InboundMessage,
   OutboundContent,
+  OutboundFile,
   PassiveReplyTarget,
   QQGateway,
 } from '../src/gateway.ts'
@@ -36,6 +37,10 @@ export class FakeQQGateway implements QQGateway {
   /** The messages QQ accepted, in order. */
   sent: SentMessage[] = []
 
+  /** The files the Channel uploaded, in order. An upload's reference is `file-info-<n>`, counting from 1. */
+  uploads: (OutboundFile & { senderId: string })[] = []
+  /** Set to make QQ refuse every upload for which this returns an error. */
+  refuseUpload: (file: OutboundFile) => Error | undefined = () => undefined
   /** The attachments QQ serves, keyed by URL. */
   downloadable = new Map<string, Uint8Array>()
 
@@ -76,6 +81,13 @@ export class FakeQQGateway implements QQGateway {
     const id = `sent-${this.sent.length + 1}`
     this.sent.push({ ...attempt, id })
     return id
+  }
+
+  async upload(senderId: string, file: OutboundFile): Promise<string> {
+    const failure = this.refuseUpload(file)
+    if (failure) throw failure
+    this.uploads.push({ ...file, senderId })
+    return `file-info-${this.uploads.length}`
   }
 
   async download(url: string): Promise<Uint8Array> {
