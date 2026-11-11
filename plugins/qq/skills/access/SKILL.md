@@ -1,6 +1,6 @@
 ---
 name: access
-description: Manage who can reach Claude Code through the QQ channel — approve a Pairing code, list or remove Senders, set the access policy. Use when the user asks to pair, approve someone, check who is allowed, or change the policy for the QQ channel.
+description: Manage who can reach Claude Code through the QQ channel. Use when the user asks to approve or deny a Pairing code, see or remove allowed Senders, or change the access policy.
 argument-hint: "[pair <code> | deny <code> | remove <SenderID> | policy <pairing|allowlist|disabled>]"
 user-invocable: true
 allowed-tools:

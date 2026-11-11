@@ -1,6 +1,6 @@
 ---
 name: configure
-description: Set up the QQ channel — save the bot's AppID and AppSecret, check whether they are set, or remove them. Use when the user pastes QQ bot credentials, asks to configure QQ, asks "how do I set this up", or wants to check the channel's status.
+description: Set up the QQ channel's bot credentials. Use when the user pastes a QQ AppID and AppSecret, asks how to set up QQ, wants to check whether the channel is configured, or wants the credentials removed.
 argument-hint: "[<AppID> <AppSecret> | clear]"
 user-invocable: true
 allowed-tools:
