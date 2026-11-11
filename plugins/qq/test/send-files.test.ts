@@ -3,6 +3,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync }
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach } from 'bun:test'
+import { SendRefusedError } from '../src/gateway.ts'
 import { messageFrom, settle, startWithPairedSender } from './start-channel.ts'
 
 const MB = 1024 * 1024
@@ -173,7 +174,7 @@ test('once the Passive reply window has closed, a file goes out as a Proactive m
 
 test('a file message QQ rejects as a Passive reply is sent once as a Proactive message', async () => {
   const { gateway, callTool, fileNamed } = await startWithFiles()
-  gateway.refuse = attempt => (attempt.answering ? new Error('passive reply window closed') : undefined)
+  gateway.refuse = attempt => (attempt.answering ? new SendRefusedError('passive reply window closed') : undefined)
 
   const result = await callTool('reply', { chat_id: 'SENDER1', text: '', files: [fileNamed('chart.png')] })
 

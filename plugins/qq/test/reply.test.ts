@@ -2,7 +2,10 @@ import { expect, test } from 'bun:test'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { approvePairing } from '../src/access.ts'
-import { messageFrom, settle, startChannel, startConnected, startWithPairedSender } from './start-channel.ts'
+import { SendRefusedError } from '../src/gateway.ts'
+import { createReplyPolicy, PASSIVE_REPLIES_PER_MESSAGE } from '../src/reply-policy.ts'
+import { FakeQQGateway } from './fake-gateway.ts'
+import { credentials, messageFrom, settle, startChannel, startConnected, startWithPairedSender } from './start-channel.ts'
 
 const MINUTE_MS = 60 * 1000
 
@@ -87,7 +90,7 @@ test('a Sender whose last message the Channel does not remember gets a Proactive
 
 test('a Markdown message QQ rejects is sent once more as plain text, in the same mode', async () => {
   const { gateway, callTool, inbound } = await startWithMessageFrom('SENDER1')
-  gateway.refuse = attempt => (attempt.content.type === 'markdown' ? new Error('markdown not allowed') : undefined)
+  gateway.refuse = attempt => (attempt.content.type === 'markdown' ? new SendRefusedError('markdown not allowed') : undefined)
 
   const result = await callTool('reply', { chat_id: 'SENDER1', text: 'The build is **green**.' })
 
@@ -101,7 +104,7 @@ test('a Markdown message QQ rejects is sent once more as plain text, in the same
 
 test('a Passive reply QQ rejects in both forms falls back to a plain-text Proactive message', async () => {
   const { gateway, callTool } = await startWithMessageFrom('SENDER1')
-  gateway.refuse = attempt => (attempt.answering ? new Error('passive reply window closed') : undefined)
+  gateway.refuse = attempt => (attempt.answering ? new SendRefusedError('passive reply window closed') : undefined)
 
   const result = await callTool('reply', { chat_id: 'SENDER1', text: 'done' })
 
@@ -117,7 +120,7 @@ test('a Passive reply QQ rejects in both forms falls back to a plain-text Proact
 test('a Proactive message is also tried as Markdown first and then as plain text', async () => {
   const { gateway, callTool, clock } = await startWithMessageFrom('SENDER1')
   clock.now += 61 * MINUTE_MS
-  gateway.refuse = attempt => (attempt.content.type === 'markdown' ? new Error('markdown not allowed') : undefined)
+  gateway.refuse = attempt => (attempt.content.type === 'markdown' ? new SendRefusedError('markdown not allowed') : undefined)
 
   await callTool('reply', { chat_id: 'SENDER1', text: 'done' })
 
@@ -131,7 +134,7 @@ test('a Proactive message is also tried as Markdown first and then as plain text
 test('when the Proactive message fails too, reply returns an error naming the cause and sends nothing later', async () => {
   const { gateway, callTool } = await startWithMessageFrom('SENDER1')
   gateway.refuse = attempt =>
-    new Error(attempt.answering ? 'passive reply window closed' : 'the user has switched proactive messages off')
+    new SendRefusedError(attempt.answering ? 'passive reply window closed' : 'the user has switched proactive messages off')
 
   const result = await callTool('reply', { chat_id: 'SENDER1', text: 'done' })
 
@@ -225,7 +228,7 @@ test('text that is only whitespace is refused instead of sent as an empty messag
 test('when both forms of a Proactive message are rejected, reply returns an error naming both', async () => {
   const { gateway, callTool, clock } = await startWithMessageFrom('SENDER1')
   clock.now += 61 * MINUTE_MS
-  gateway.refuse = attempt => new Error(`${attempt.content.type} refused`)
+  gateway.refuse = attempt => new SendRefusedError(`${attempt.content.type} refused`)
 
   const result = await callTool('reply', { chat_id: 'SENDER1', text: 'done' })
 
@@ -271,7 +274,7 @@ test('the plain-text resend of a rejected Markdown message keeps the quote', asy
   const question = { ...messageFrom('SENDER1', 'is the build green?'), quoteRef: 'REFIDX_question' }
   gateway.receive(question)
   await settle()
-  gateway.refuse = attempt => (attempt.content.type === 'markdown' ? new Error('markdown not allowed') : undefined)
+  gateway.refuse = attempt => (attempt.content.type === 'markdown' ? new SendRefusedError('markdown not allowed') : undefined)
 
   await callTool('reply', { chat_id: 'SENDER1', reply_to: question.messageId, text: 'yes' })
 
@@ -310,4 +313,123 @@ test('a reply without reply_to quotes nothing', async () => {
 
   expect(gateway.sent[0]!.content).toEqual({ type: 'markdown', text: 'hi' })
   expect(result.text).not.toContain('quote')
+})
+
+test('a send whose outcome QQ never reported is not tried again in any form, and the result says it may have arrived', async () => {
+  const { gateway, callTool } = await startWithMessageFrom('SENDER1')
+  gateway.refuse = () => new Error(`Network error: socket hang up (${credentials.appSecret})`)
+
+  const result = await callTool('reply', { chat_id: 'SENDER1', text: 'one answer' })
+
+  expect(result.isError).toBe(true)
+  expect(result.text).toContain('may or may not have arrived')
+  expect(result.text).toContain('socket hang up')
+  expect(result.text).not.toContain(credentials.appSecret)
+  expect(gateway.attempts).toHaveLength(1)
+})
+
+test('a send QQ took but whose answer was lost goes out once', async () => {
+  const gateway = new FakeQQGateway()
+  const send = gateway.send.bind(gateway)
+  gateway.send = async (...args) => {
+    await send(...args)
+    throw new Error('Network error: connection reset before the response arrived')
+  }
+  const policy = createReplyPolicy({ gateway, now: () => 1000 })
+  policy.noteInbound('SENDER1', 'message-1')
+
+  await expect(
+    policy.deliver('SENDER1', [{ type: 'markdown', text: 'one answer' }, { type: 'text', text: 'one answer' }]),
+  ).rejects.toThrow('may or may not have taken')
+
+  expect(gateway.sent).toHaveLength(1)
+})
+
+test('messages sent at the same time take no more Passive replies than are left', async () => {
+  const gateway = new FakeQQGateway()
+  const policy = createReplyPolicy({ gateway, now: () => 1000 })
+  policy.noteInbound('SENDER1', 'message-1')
+  for (let i = 1; i < PASSIVE_REPLIES_PER_MESSAGE; i++) await policy.deliver('SENDER1', [{ type: 'text', text: `${i}` }])
+
+  await Promise.all([
+    policy.deliver('SENDER1', [{ type: 'text', text: 'last a' }]),
+    policy.deliver('SENDER1', [{ type: 'text', text: 'last b' }]),
+  ])
+
+  expect(gateway.sent.filter(message => message.answering)).toHaveLength(PASSIVE_REPLIES_PER_MESSAGE)
+  expect(gateway.sent.filter(message => !message.answering)).toHaveLength(1)
+})
+
+test('five messages sent at once to one Sender use four Passive replies, and other Senders keep their own', async () => {
+  const gateway = new FakeQQGateway()
+  const policy = createReplyPolicy({ gateway, now: () => 1000 })
+  policy.noteInbound('SENDER1', 'message-1')
+  policy.noteInbound('SENDER2', 'message-2')
+
+  await Promise.all([
+    ...Array.from({ length: 5 }, (_, i) => policy.deliver('SENDER1', [{ type: 'text', text: `part ${i}` }])),
+    policy.deliver('SENDER2', [{ type: 'text', text: 'other' }]),
+  ])
+
+  const passive = (senderId: string) => gateway.sent.filter(message => message.senderId === senderId && message.answering)
+  expect(passive('SENDER1')).toHaveLength(PASSIVE_REPLIES_PER_MESSAGE)
+  expect(passive('SENDER2')).toHaveLength(1)
+})
+
+test('a Passive reply QQ refused gives its place back', async () => {
+  const gateway = new FakeQQGateway()
+  const policy = createReplyPolicy({ gateway, now: () => 1000 })
+  policy.noteInbound('SENDER1', 'message-1')
+  let refuseNext = true
+  gateway.refuse = attempt => {
+    if (!attempt.answering || !refuseNext) return undefined
+    refuseNext = false
+    return new SendRefusedError('passive reply refused')
+  }
+
+  await policy.deliver('SENDER1', [{ type: 'text', text: 'refused, then proactive' }])
+  for (let i = 0; i < PASSIVE_REPLIES_PER_MESSAGE; i++) await policy.deliver('SENDER1', [{ type: 'text', text: `${i}` }])
+
+  expect(gateway.sent.filter(message => message.answering)).toHaveLength(PASSIVE_REPLIES_PER_MESSAGE)
+})
+
+test('reply arguments of the wrong type are refused, naming the field, and nothing is sent', async () => {
+  const { gateway, callTool } = await startWithMessageFrom('SENDER1')
+
+  const calls = [
+    { args: { chat_id: 'SENDER1', text: 'here is the file', files: '/tmp/missing.txt' }, field: 'files' },
+    { args: { chat_id: 'SENDER1', text: 'here', files: ['/tmp/a.txt', 42] }, field: 'files' },
+    { args: { chat_id: 'SENDER1', text: { message: 'hello' } }, field: 'text' },
+    { args: { chat_id: 'SENDER1' }, field: 'text' },
+    { args: { chat_id: 12345, text: 'hello' }, field: 'chat_id' },
+    { args: { text: 'hello' }, field: 'chat_id' },
+    { args: { chat_id: 'SENDER1', text: 'hello', reply_to: 7 }, field: 'reply_to' },
+  ]
+  for (const { args, field } of calls) {
+    const result = await callTool('reply', args)
+    expect(result.isError).toBe(true)
+    expect(result.text).toContain(field)
+  }
+
+  expect(gateway.attempts).toHaveLength(0)
+  expect(gateway.uploads).toHaveLength(0)
+})
+
+test('download_attachment arguments of the wrong type are refused and nothing is fetched', async () => {
+  const { gateway, callTool } = await startWithMessageFrom('SENDER1')
+
+  for (const args of [{ chat_id: 'SENDER1' }, { chat_id: 'SENDER1', message_id: 1 }, { message_id: 'm' }]) {
+    expect((await callTool('download_attachment', args)).isError).toBe(true)
+  }
+
+  expect(gateway.downloads).toHaveLength(0)
+})
+
+test('an optional reply argument given as null counts as left out', async () => {
+  const { gateway, callTool } = await startWithMessageFrom('SENDER1')
+
+  const result = await callTool('reply', { chat_id: 'SENDER1', text: 'hello', reply_to: null, files: null })
+
+  expect(result.isError).toBe(false)
+  expect(gateway.sent).toHaveLength(1)
 })

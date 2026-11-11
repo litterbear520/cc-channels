@@ -22,7 +22,12 @@ export interface QQGateway {
   /**
    * Sends one message to a Sender's Direct chat: as a Passive reply when
    * `answering` names an inbound message, otherwise as a Proactive message.
-   * Resolves with the ID QQ gave the message; rejects when QQ does not accept it.
+   * Resolves with the ID QQ gave the message.
+   *
+   * Rejects with {@link SendRefusedError} only when it is certain that QQ did
+   * not take the message: QQ answered with an error, or the request never left.
+   * Any other rejection means the message may have arrived, for example when
+   * the connection broke before QQ's answer came back.
    */
   send(senderId: string, content: OutboundContent, answering?: PassiveReplyTarget): Promise<string>
   /**
@@ -37,8 +42,12 @@ export interface QQGateway {
    * not take the file.
    */
   upload(senderId: string, file: OutboundFile): Promise<string>
-  /** Fetches an inbound attachment's bytes. Rejects when QQ no longer serves the URL. */
-  download(url: string): Promise<Uint8Array>
+  /**
+   * Fetches an inbound attachment's bytes. Rejects with
+   * {@link AttachmentTooLargeError} as soon as more than `maxBytes` arrive,
+   * without reading the rest, and rejects when QQ no longer serves the URL.
+   */
+  download(url: string, maxBytes: number): Promise<Uint8Array>
   /** Closes the connection. Safe to call when not connected. */
   close(): Promise<void>
 }
@@ -108,4 +117,14 @@ export interface PassiveReplyTarget {
 /** QQ refused the AppID and AppSecret. Trying again with the same pair cannot succeed. */
 export class CredentialsRejectedError extends Error {
   override readonly name = 'CredentialsRejectedError'
+}
+
+/** QQ answered that it did not take a message, or the request never reached it. Sending another form is safe. */
+export class SendRefusedError extends Error {
+  override readonly name = 'SendRefusedError'
+}
+
+/** An attachment turned out larger than the most the caller would take. */
+export class AttachmentTooLargeError extends Error {
+  override readonly name = 'AttachmentTooLargeError'
 }

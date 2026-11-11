@@ -1,7 +1,7 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
-import { decide, isAllowed, newPairingCode as randomPairingCode, readAccess, takeApprovedSenders } from './access.ts'
+import { decide, mayReach, newPairingCode as randomPairingCode, readAccess, takeApprovedSenders } from './access.ts'
 import { MAX_MESSAGE_LENGTH, splitText } from './chunk.ts'
 import { readCredentials } from './credentials.ts'
 import { CredentialsRejectedError, type InboundMessage, type OutboundContent, type OutboundFile, type QQGateway, type QuoteRef } from './gateway.ts'
@@ -14,7 +14,7 @@ import {
   type PermissionRequest,
   type Verdict,
 } from './permission.ts'
-import { createReplyPolicy } from './reply-policy.ts'
+import { createReplyPolicy, DeliveryUnknownError } from './reply-policy.ts'
 
 export interface Channel {
   /** Serves Claude Code over the transport and begins connecting to QQ. */
@@ -78,7 +78,9 @@ const TOOLS = [
       'Send a message to a QQ Direct chat. Pass the chat_id from the inbound <channel> tag. The text is sent ' +
       `as Markdown, and text over ${MAX_MESSAGE_LENGTH} characters is split into several messages. Local files ` +
       'can be attached with files. Returns the ' +
-      'IDs of the messages sent, or an error saying why QQ did not take them; nothing is retried later.',
+      'IDs of the messages sent, or an error saying why QQ did not take them; nothing is retried later. ' +
+      'An error saying a message may or may not have arrived means QQ\'s answer was lost: ask the person ' +
+      'whether it came before sending it again.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -136,8 +138,33 @@ function quotedPrefix(message: InboundMessage): string {
 
 const PAIRED_TEXT = '配对成功，现在可以直接给 Claude 发消息了。'
 
-/** A tool argument that should be a list of strings. Anything else counts as an empty list. */
-const stringList = (value: unknown): string[] => (Array.isArray(value) ? value.map(String) : [])
+/*
+ * Tool arguments are checked here, before anything is sent or fetched: the MCP
+ * SDK checks the shape of the request, not each tool's inputSchema. An
+ * optional argument may be left out or given as null.
+ */
+type ToolArguments = Record<string, unknown>
+const typeOf = (value: unknown) =>
+  value === null ? 'null' : Array.isArray(value) ? 'an array' : typeof value === 'object' ? 'an object' : `a ${typeof value}`
+const wrongType = (key: string, expected: string, value: unknown) =>
+  new Error(`${key} must be ${expected}, ${value === undefined ? 'and it is missing' : `not ${typeOf(value)}`}; nothing was done`)
+
+function requiredString(args: ToolArguments, key: string): string {
+  const value = args[key]
+  if (typeof value !== 'string') throw wrongType(key, 'a string', value)
+  return value
+}
+function optionalString(args: ToolArguments, key: string): string | undefined {
+  return args[key] === undefined || args[key] === null ? undefined : requiredString(args, key)
+}
+function optionalStringList(args: ToolArguments, key: string): string[] {
+  const value = args[key]
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value) || !value.every(item => typeof item === 'string')) {
+    throw wrongType(key, 'an array of strings', value)
+  }
+  return value
+}
 
 const said = (text: string) => ({ content: [{ type: 'text', text }] })
 
@@ -191,17 +218,19 @@ export function createChannel({
     const args = request.params.arguments ?? {}
     try {
       switch (request.params.name) {
-        case 'reply':
+        case 'reply': {
+          const replyTo = optionalString(args, 'reply_to')
           return said(
             await reply({
-              chatId: String(args.chat_id ?? ''),
-              text: String(args.text ?? ''),
-              filePaths: stringList(args.files),
-              ...(typeof args.reply_to === 'string' && args.reply_to ? { replyTo: args.reply_to } : {}),
+              chatId: requiredString(args, 'chat_id'),
+              text: requiredString(args, 'text'),
+              filePaths: optionalStringList(args, 'files'),
+              ...(replyTo ? { replyTo } : {}),
             }),
           )
+        }
         case 'download_attachment':
-          return said(await downloadAttachment(String(args.chat_id ?? ''), String(args.message_id ?? '')))
+          return said(await downloadAttachment(requiredString(args, 'chat_id'), requiredString(args, 'message_id')))
         default:
           throw new Error(`unknown tool: ${request.params.name}`)
       }
@@ -239,11 +268,16 @@ export function createChannel({
     }
   }
 
-  /** Refuses a conversation Claude may not write to or read from. In a Direct chat that is the Sender. */
+  /**
+   * Refuses a conversation Claude may not write to or read from. In a Direct
+   * chat that is the Sender. Under the disabled policy that is everyone.
+   */
   function assertAllowed(chatId: string): void {
-    if (!isAllowed(stateDir, chatId)) {
-      throw new Error(`${chatId || 'that chat_id'} is not on the allowlist; the user adds Senders with /qq:access`)
+    if (mayReach(stateDir, chatId)) return
+    if (readAccess(stateDir).policy === 'disabled') {
+      throw new Error('the QQ channel is paused (access policy disabled); the user can change it with /qq:access')
     }
+    throw new Error(`${chatId || 'that chat_id'} is not on the allowlist; the user adds Senders with /qq:access`)
   }
 
   async function reply({
@@ -298,6 +332,12 @@ export function createChannel({
         const before = sentIds.length > 0 ? `, after ${describeSent(sentIds)}` : ''
         const rest = parts.length - sentIds.length - 1
         const after = rest > 0 ? `; the ${rest} ${rest === 1 ? 'message' : 'messages'} after it were not tried` : ''
+        if (error instanceof DeliveryUnknownError) {
+          throw new Error(
+            `${part.label} may or may not have arrived${before}: ${scrub(error)}; it was not sent again, ` +
+              `so ask the person whether it came${after}`,
+          )
+        }
         throw new Error(`${part.label} was not sent${before}: ${scrub(error)}${after}`)
       }
     }
@@ -391,9 +431,16 @@ export function createChannel({
     })
   }
 
-  /** Confirms, in the Direct chat, the Pairings the user approved since the last look. */
+  /**
+   * Confirms, in the Direct chat, the Pairings the user approved since the last
+   * look, unless the Sender was removed or the policy disabled since.
+   */
   function confirmApprovedPairings(): void {
     for (const senderId of takeApprovedSenders(stateDir)) {
+      if (!mayReach(stateDir, senderId)) {
+        log('did not confirm a Pairing: the Sender may no longer be reached')
+        continue
+      }
       replies.deliver(senderId, plain(PAIRED_TEXT)).catch(error => log(`could not confirm a Pairing: ${scrub(error)}`))
     }
   }

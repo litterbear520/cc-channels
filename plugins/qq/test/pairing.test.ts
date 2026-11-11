@@ -137,6 +137,46 @@ test('under the disabled policy nobody is delivered or answered', async () => {
   expect(events).toHaveLength(0)
 })
 
+test('under the disabled policy Claude can neither reply to nor fetch from a paired Sender, until it is set back', async () => {
+  const { gateway, stateDir, clock, callTool } = await startWithPairedSender('SENDER1')
+  const attachment = { url: 'https://qq.example/file', contentType: 'file', name: 'file.txt' }
+  gateway.downloadable.set(attachment.url, new TextEncoder().encode('file content'))
+  const message = { ...messageFrom('SENDER1'), attachments: [attachment] }
+  gateway.receive(message)
+  await settle()
+  setPolicy(stateDir, 'disabled', clock.now)
+
+  const reply = await callTool('reply', { chat_id: 'SENDER1', text: 'after disabled' })
+  const download = await callTool('download_attachment', { chat_id: 'SENDER1', message_id: message.messageId })
+
+  expect(reply.isError).toBe(true)
+  expect(reply.text).toContain('disabled')
+  expect(download.isError).toBe(true)
+  expect(gateway.attempts).toHaveLength(0)
+  expect(gateway.downloads).toHaveLength(0)
+
+  setPolicy(stateDir, 'pairing', clock.now)
+  expect((await callTool('reply', { chat_id: 'SENDER1', text: 'back again' })).isError).toBe(false)
+  expect((await callTool('download_attachment', { chat_id: 'SENDER1', message_id: message.messageId })).isError).toBe(false)
+})
+
+test('a Pairing approved and then disabled, or removed, before the Channel looks is not confirmed', async () => {
+  const { gateway, stateDir, clock } = await startConnected({ pairingCodes: ['a1b2c3', 'd4e5f6'] })
+  gateway.receive(messageFrom('SENDER1'))
+  gateway.receive(messageFrom('SENDER2'))
+  await settle()
+  gateway.attempts.length = 0
+
+  // Nothing is awaited in between, so every change lands before the Channel looks.
+  approvePairing(stateDir, 'a1b2c3', clock.now)
+  removeSender(stateDir, 'SENDER1', clock.now)
+  approvePairing(stateDir, 'd4e5f6', clock.now)
+  setPolicy(stateDir, 'disabled', clock.now)
+  await settle()
+
+  expect(gateway.attempts).toHaveLength(0)
+})
+
 test("a removed Sender's next message is treated as unknown", async () => {
   const { gateway, events, stateDir, clock } = await startWithPairedSender('SENDER1')
   removeSender(stateDir, 'SENDER1', clock.now)

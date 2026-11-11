@@ -1,11 +1,13 @@
 import type { Credentials } from '../src/credentials.ts'
-import type {
-  GatewayEvents,
-  InboundMessage,
-  OutboundContent,
-  OutboundFile,
-  PassiveReplyTarget,
-  QQGateway,
+import {
+  AttachmentTooLargeError,
+  type GatewayEvents,
+  type SendRefusedError,
+  type InboundMessage,
+  type OutboundContent,
+  type OutboundFile,
+  type PassiveReplyTarget,
+  type QQGateway,
 } from '../src/gateway.ts'
 
 /** One message the Channel asked QQ to send. */
@@ -30,7 +32,11 @@ export class FakeQQGateway implements QQGateway {
   connectAttempts = 0
   /** Set to make QQ refuse the next connection. */
   failNextConnectWith: Error | undefined
-  /** Set to make QQ refuse every message for which this returns an error. */
+  /**
+   * Set to make every message for which this returns an error fail with it.
+   * A {@link SendRefusedError} is QQ refusing the message; any other error
+   * leaves open whether QQ took it.
+   */
   refuse: (attempt: SendAttempt) => Error | undefined = () => undefined
   /** Every message the Channel asked QQ to send, refused ones included, in order. */
   attempts: SendAttempt[] = []
@@ -101,10 +107,11 @@ export class FakeQQGateway implements QQGateway {
     this.typing.push({ senderId, messageId })
   }
 
-  async download(url: string): Promise<Uint8Array> {
+  async download(url: string, maxBytes: number): Promise<Uint8Array> {
     this.downloads.push(url)
     const bytes = this.downloadable.get(url)
     if (!bytes) throw new Error('QQ answered 404 for the attachment')
+    if (bytes.byteLength > maxBytes) throw new AttachmentTooLargeError(`the attachment is over ${maxBytes} bytes`)
     return bytes
   }
 

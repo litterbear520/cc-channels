@@ -1,8 +1,8 @@
 import { afterEach, expect, test } from 'bun:test'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { decide, takeApprovedSenders } from '../src/access.ts'
+import { approvePairing, decide, readAccess, takeApprovedSenders } from '../src/access.ts'
 
 const stateDirs: string[] = []
 afterEach(() => {
@@ -124,4 +124,93 @@ test('a command with a missing or extra value prints the usage', () => {
     expect(exitCode).toBe(1)
     expect(output).toContain('usage: access.ts')
   }
+})
+
+/*
+ * The Channel and the access command are separate processes that both change
+ * access.json. In these tests the test process plays the Channel: decide()
+ * calls the code maker while it holds the file, which is where a command run
+ * at the same moment would cut in.
+ */
+
+/** Has SENDER1 paired, as at the start of each case below. */
+function pairedSender(stateDir: string): void {
+  decide(stateDir, 'SENDER1', Date.now(), () => 'a1b2c3')
+  approvePairing(stateDir, 'a1b2c3', Date.now())
+  takeApprovedSenders(stateDir)
+}
+
+test('a command run while the Channel is changing the access file waits, and neither change is lost', async () => {
+  const stateDir = newStateDir()
+  pairedSender(stateDir)
+
+  let command: ReturnType<typeof Bun.spawn> | undefined
+  decide(stateDir, 'STRANGER', Date.now(), () => {
+    command = Bun.spawn(['bun', join(import.meta.dir, '..', 'access.ts'), 'remove', 'SENDER1'], {
+      env: { ...process.env, QQ_STATE_DIR: stateDir },
+      stdout: 'ignore',
+      stderr: 'ignore',
+    })
+    // Long enough for the command to start and find the file taken.
+    Bun.sleepSync(300)
+    return 'd4e5f6'
+  })
+  const exitCode = await command!.exited
+
+  expect(exitCode).toBe(0)
+  const after = readAccess(stateDir)
+  expect(after.allowFrom).toEqual([])
+  expect(Object.keys(after.pending)).toEqual(['d4e5f6'])
+})
+
+test('a command cut off by a long-held access file fails, and nothing undoes a change made after it', () => {
+  const stateDir = newStateDir()
+  pairedSender(stateDir)
+
+  let during: ReturnType<typeof access> | undefined
+  decide(stateDir, 'STRANGER', Date.now(), () => {
+    during = access(stateDir, 'policy', 'disabled')
+    return 'd4e5f6'
+  })
+  const later = access(stateDir, 'policy', 'disabled')
+
+  expect(during!.exitCode).toBe(1)
+  expect(during!.output).toContain('another process has been changing access.json')
+  expect(later.exitCode).toBe(0)
+  const after = readAccess(stateDir)
+  expect(after.policy).toBe('disabled')
+  expect(after.allowFrom).toEqual(['SENDER1'])
+  expect(Object.keys(after.pending)).toEqual(['d4e5f6'])
+})
+
+test('a removal and a policy change made between two inbound messages stay made', () => {
+  const stateDir = newStateDir()
+  pairedSender(stateDir)
+
+  expect(access(stateDir, 'remove', 'SENDER1').exitCode).toBe(0)
+  expect(access(stateDir, 'policy', 'allowlist').exitCode).toBe(0)
+  decide(stateDir, 'STRANGER', Date.now(), () => 'd4e5f6')
+
+  expect(readAccess(stateDir)).toEqual({ policy: 'allowlist', allowFrom: [], pending: {} })
+})
+
+test('a lock left by a process that has ended does not block the access file', () => {
+  const stateDir = newStateDir()
+  pairedSender(stateDir)
+  const ended = Bun.spawnSync(['sh', '-c', 'echo $$'])
+  writeFileSync(join(stateDir, 'access.lock'), ended.stdout.toString().trim())
+
+  const { exitCode } = access(stateDir, 'remove', 'SENDER1')
+
+  expect(exitCode).toBe(0)
+  expect(readAccess(stateDir).allowFrom).toEqual([])
+})
+
+test('saving the access file leaves no lock or temporary file behind', () => {
+  const stateDir = newStateDir()
+  pairedSender(stateDir)
+  access(stateDir, 'policy', 'allowlist')
+
+  expect(readdirSync(stateDir).sort()).toEqual(['access.json', 'approved'])
+  expect(JSON.parse(readFileSync(join(stateDir, 'access.json'), 'utf8')).policy).toBe('allowlist')
 })

@@ -194,3 +194,25 @@ test('a very long file name is cut to fit a file system, keeping its extension',
   expect(path).toEndWith('报告.pdf')
   expect(readFileSync(path!, 'utf8')).toBe('pdf bytes')
 })
+
+test('downloads in the same millisecond of files with one name never overwrite each other', async () => {
+  // The Channel's clock stands still in tests, so every download below starts in the same millisecond.
+  const { gateway, callTool } = await startWithPairedSender('SENDER1')
+  const messages = ['first file', 'second file'].map((content, index) => {
+    const report = { url: `https://qq.example/download?fileid=report-${index}`, contentType: 'file', name: 'report.txt' }
+    gateway.downloadable.set(report.url, text(content))
+    return { ...messageFrom('SENDER1', ''), attachments: [report] }
+  })
+  for (const message of messages) gateway.receive(message)
+  await settle()
+
+  const downloads = [messages[0]!, messages[1]!, messages[0]!].map(message =>
+    callTool('download_attachment', { chat_id: 'SENDER1', message_id: message.messageId }),
+  )
+  const results = await Promise.all(downloads)
+
+  expect(results.map(result => result.isError)).toEqual([false, false, false])
+  const paths = results.map(result => pathsIn(result.text)[0]!)
+  expect(new Set(paths).size).toBe(3)
+  expect(paths.map(path => readFileSync(path, 'utf8'))).toEqual(['first file', 'second file', 'first file'])
+})

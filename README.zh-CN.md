@@ -92,7 +92,7 @@ Pairing 码一小时后过期。同时最多有三个码等待批准；已经有
 | `/qq:access remove <SenderID>` | 把一个 Sender 移出 allowlist |
 | `/qq:access policy pairing` | 陌生 Sender 会收到 Pairing 码（默认） |
 | `/qq:access policy allowlist` | 忽略陌生 Sender。配置完成后建议切到这个策略 |
-| `/qq:access policy disabled` | 忽略所有 Sender |
+| `/qq:access policy disabled` | 忽略所有 Sender，Claude 也不能回复或下载附件 |
 
 访问权限只能在你的终端里修改。Channel 会告诉 Claude：绝不因为 QQ 消息的要求而修改它。
 
@@ -101,7 +101,7 @@ allowlist 上的任何人都能向你的 Claude Code 会话下指令，权限与
 ## 在 QQ 里能做什么
 
 - **发文字。** 消息进入会话时带有你的 Sender ID、消息 ID 和时间。
-- **发图片或文件。** Claude 能看到消息带了附件，需要时再下载到 `~/.claude/channels/qq/inbox/`。超过 25 MB 的附件不会下载。
+- **发图片或文件。** Claude 能看到消息带了附件，需要时再下载到 `~/.claude/channels/qq/inbox/`。附件一超过 25 MB 就停止下载，最多只取这么多；超过两分钟没下完也会放弃。
 - **引用之前的消息。** Claude 能同时看到被引用的文字和你写的内容。
 - **知道消息已送达。** 消息到达 Claude 后，机器人会显示一会儿"输入中"。
 - **看 Claude 的回答。** Claude 通过 Channel 的 `reply` 工具作答。文字以 Markdown 发送，超过 2000 个字符会拆成多条消息。Claude 可以让回答以引用你近期某条消息的形式显示。
@@ -113,7 +113,7 @@ allowlist 上的任何人都能向你的 Claude Code 会话下指令，权限与
 - **只支持 Direct chat。** 不支持群聊和 Guild（QQ 频道）。
 - **不能编辑消息、不能加表情回应、不能查历史。** QQ 在 Direct chat 里不向机器人提供这些能力。Claude 要更正时会另发一条新消息，也无法查看更早的消息。
 - **文件最大 5 MB。** 更大的文件会被拒绝；没有实现 QQ 的分片上传。
-- **Passive reply 的限制。** QQ 文档规定，机器人对一条收到的消息最多能在 60 分钟内发 4 条 Passive reply（被动回复）。Channel 遵守这两个限制：在限制之内，对你最近一条消息发 Passive reply；超出之后改发 Proactive message（主动消息），而 QQ 允许接收者关闭主动消息。两种都发不出去时，Claude 会得知原因；消息不会排队，也不会事后重试。在本项目的实机测试里，唯一的 Sender 是机器人的创建者，这两个限制都没有生效（同一条消息收下了 39 条 Passive reply，最后一条在 61 分钟之后），Sender 关闭主动消息后 Proactive message 仍然送达。其他 Sender 可能会受到文档所写限制的约束。
+- **Passive reply 的限制。** QQ 文档规定，机器人对一条收到的消息最多能在 60 分钟内发 4 条 Passive reply（被动回复）。Channel 遵守这两个限制：在限制之内，对你最近一条消息发 Passive reply；超出之后改发 Proactive message（主动消息），而 QQ 允许接收者关闭主动消息。两种都发不出去时，Claude 会得知原因；消息不会排队，也不会事后重试。QQ 还没回应连接就断了时，消息可能已经送达也可能没有：不会再发一次，Claude 会得知这一点。在本项目的实机测试里，唯一的 Sender 是机器人的创建者，这两个限制都没有生效（同一条消息收下了 39 条 Passive reply，最后一条在 61 分钟之后），Sender 关闭主动消息后 Proactive message 仍然送达。其他 Sender 可能会受到文档所写限制的约束。
 - **只能取回近期消息的附件。** QQ 没有按消息 ID 取回历史消息的接口，所以 Channel 把近期消息的附件引用记在内存里，重启后就没有了。
 - **预期用法是一个常驻会话。** QQ 会把每条消息发给同一个机器人的所有连接。只有带标志启动的会话会收到消息，但如果同一账号下有多个启用了本插件的 Claude Code 会话，陌生 Sender 可能被回复不止一次。
 

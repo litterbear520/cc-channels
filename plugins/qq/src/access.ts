@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { chmodSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 /**
@@ -45,7 +45,16 @@ const MAX_REPLIES_PER_PAIRING = 2
 /** A Sender ID becomes a file name in the approved directory, so anything else is refused. */
 const SAFE_SENDER_ID = /^[A-Za-z0-9_-]{1,128}$/
 
+/**
+ * How long a writer waits for another to finish before giving up. Writers hold
+ * the lock only while they read, change and save the file, for milliseconds.
+ */
+const LOCK_WAIT_MS = 2000
+const LOCK_RETRY_MS = 10
+
 const accessFile = (stateDir: string) => join(stateDir, 'access.json')
+/** Held by whichever process is changing the access file, and holding its ID. */
+const lockFile = (stateDir: string) => join(stateDir, 'access.lock')
 const approvedDir = (stateDir: string) => join(stateDir, 'approved')
 
 export const newPairingCode = () => randomBytes(3).toString('hex')
@@ -78,21 +87,97 @@ export function readAccess(stateDir: string): Access {
 }
 
 function saveAccess(stateDir: string, access: Access): void {
-  mkdirSync(stateDir, { recursive: true, mode: 0o700 })
   const file = accessFile(stateDir)
-  // Written whole and renamed, so a reader never sees half a file.
-  writeFileSync(`${file}.tmp`, JSON.stringify(access, null, 2) + '\n', { mode: 0o600 })
-  // The mode above is ignored when a leftover temporary file already exists.
-  chmodSync(`${file}.tmp`, 0o600)
-  renameSync(`${file}.tmp`, file)
+  // Written whole and renamed, so a reader never sees half a file. The name is
+  // the writer's own, so that no other writer can rename it half written.
+  const temporary = `${file}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`
+  try {
+    writeFileSync(temporary, JSON.stringify(access, null, 2) + '\n', { mode: 0o600, flag: 'wx' })
+    renameSync(temporary, file)
+  } finally {
+    rmSync(temporary, { force: true })
+  }
+}
+
+/** True when no process has this ID. A process of another user still counts as running. */
+function isGone(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return false
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'ESRCH'
+  }
+}
+
+/**
+ * Removes a lock left by a process that ended while holding it. Only one
+ * process at a time may do so, so that none removes a lock another has just
+ * taken. Returns true when the lock is gone and worth trying again.
+ */
+function breakAbandonedLock(stateDir: string): boolean {
+  const lock = lockFile(stateDir)
+  const breaker = `${lock}.break`
+  try {
+    writeFileSync(breaker, String(process.pid), { flag: 'wx', mode: 0o600 })
+  } catch {
+    return false
+  }
+  try {
+    if (!isGone(Number(readFileSync(lock, 'utf8')))) return false
+    rmSync(lock, { force: true })
+    return true
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return true
+    throw error
+  } finally {
+    rmSync(breaker, { force: true })
+  }
+}
+
+/**
+ * Runs `work` while this process alone may change the access file. The
+ * Channel and the access command are separate processes, so without this one
+ * could save a copy read before the other's change and undo it. Throws, never
+ * taking the lock by force, when another running process holds it too long.
+ */
+function withLock<Result>(stateDir: string, work: () => Result): Result {
+  mkdirSync(stateDir, { recursive: true, mode: 0o700 })
+  const lock = lockFile(stateDir)
+  const giveUpAt = Date.now() + LOCK_WAIT_MS
+  for (;;) {
+    try {
+      writeFileSync(lock, String(process.pid), { flag: 'wx', mode: 0o600 })
+      break
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+    }
+    if (breakAbandonedLock(stateDir)) continue
+    if (Date.now() >= giveUpAt) {
+      throw new Error(
+        `another process has been changing access.json for over ${LOCK_WAIT_MS / 1000} seconds; try again. ` +
+          `If no Claude Code session or access command is running, delete ${lock}`,
+      )
+    }
+    Bun.sleepSync(LOCK_RETRY_MS)
+  }
+  try {
+    return work()
+  } finally {
+    rmSync(lock, { force: true })
+  }
 }
 
 /**
  * Reads the access file, forgets expired Pairings, and applies `change`, which
  * returns its result and whether it altered anything. Writes the file back
- * only when something changed.
+ * only when something changed. All of it happens under the lock.
  */
 function update<Result>(stateDir: string, now: number, change: (access: Access) => [result: Result, changed: boolean]): Result {
+  return withLock(stateDir, () => updateLocked(stateDir, now, change))
+}
+
+function updateLocked<Result>(stateDir: string, now: number, change: (access: Access) => [result: Result, changed: boolean]): Result {
   const access = readAccess(stateDir)
   let expired = false
   for (const [code, pairing] of Object.entries(access.pending)) {
@@ -131,9 +216,13 @@ export function decide(stateDir: string, senderId: string, now: number, makeCode
   })
 }
 
-/** True when the Sender is on the allowlist. */
-export function isAllowed(stateDir: string, senderId: string): boolean {
-  return readAccess(stateDir).allowFrom.includes(senderId)
+/**
+ * True when Claude may write to the Sender or fetch what they sent: they are
+ * on the allowlist and the policy is not `disabled`.
+ */
+export function mayReach(stateDir: string, senderId: string): boolean {
+  const access = readAccess(stateDir)
+  return access.policy !== 'disabled' && access.allowFrom.includes(senderId)
 }
 
 /**

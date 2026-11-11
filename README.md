@@ -92,7 +92,7 @@ A Pairing code expires after one hour. At most three codes wait for approval at 
 | `/qq:access remove <SenderID>` | Takes a Sender off the allowlist |
 | `/qq:access policy pairing` | Unknown Senders are answered with a Pairing code (the default) |
 | `/qq:access policy allowlist` | Unknown Senders are ignored. Switch to this once you are set up |
-| `/qq:access policy disabled` | Every Sender is ignored |
+| `/qq:access policy disabled` | Every Sender is ignored, and Claude can neither reply nor download attachments |
 
 Access is changed only from your terminal. The Channel tells Claude never to change it because a QQ message asks.
 
@@ -101,7 +101,7 @@ Anyone on the allowlist can give your Claude Code session instructions, with wha
 ## What you can do from QQ
 
 - **Send text.** It arrives in the session tagged with your Sender ID, the message ID, and the time.
-- **Send an image or a file.** Claude sees that the message carries attachments and downloads them on demand into `~/.claude/channels/qq/inbox/`. An attachment over 25 MB is not downloaded.
+- **Send an image or a file.** Claude sees that the message carries attachments and downloads them on demand into `~/.claude/channels/qq/inbox/`. A download stops as soon as an attachment passes 25 MB, so no more than that is fetched, and one that takes over two minutes is abandoned.
 - **Quote an earlier message.** Claude sees the quoted text along with what you wrote.
 - **See that your message arrived.** The bot shows as typing for a while after a message reaches Claude.
 - **Read Claude's answers.** Claude answers through the Channel's `reply` tool. Text is sent as Markdown, and text over 2000 characters is split into several messages. Claude can show an answer as quoting one of your recent messages.
@@ -113,7 +113,7 @@ Anyone on the allowlist can give your Claude Code session instructions, with wha
 - **Direct chat only.** Group chat and Guild (QQ 频道) are not supported.
 - **No editing, reactions, or history.** QQ offers a bot none of them in a Direct chat. Claude sends a new message to correct an old one, and cannot look up earlier messages.
 - **Files up to 5 MB.** Larger files are refused; QQ's chunked upload is not implemented.
-- **Passive reply limits.** QQ documents that a bot may answer an inbound message with at most 4 Passive replies within 60 minutes. The Channel follows those limits: within them it sends a Passive reply to your latest message, and beyond them it sends a Proactive message, which QQ lets a recipient switch off. If neither can be delivered, Claude is told why; nothing is queued or retried later. In this project's live test, with the bot's creator as the only Sender, neither limit took effect (39 Passive replies to one message were accepted, the last after 61 minutes), and Proactive messages were still delivered after the Sender switched them off. Other Senders may be held to the documented limits.
+- **Passive reply limits.** QQ documents that a bot may answer an inbound message with at most 4 Passive replies within 60 minutes. The Channel follows those limits: within them it sends a Passive reply to your latest message, and beyond them it sends a Proactive message, which QQ lets a recipient switch off. If neither can be delivered, Claude is told why; nothing is queued or retried later. When the connection breaks before QQ answers, the message may or may not have arrived: it is not sent again, and Claude is told so. In this project's live test, with the bot's creator as the only Sender, neither limit took effect (39 Passive replies to one message were accepted, the last after 61 minutes), and Proactive messages were still delivered after the Sender switched them off. Other Senders may be held to the documented limits.
 - **Attachments are fetched only for recent messages.** QQ cannot be asked for a past message, so the Channel remembers the attachment references of recent messages in memory and loses them on a restart.
 - **One long-lived session is the intended setup.** QQ delivers each message to every connection of a bot. Only the session started with the flag receives messages, but if several Claude Code sessions of one account have the plugin enabled, an unknown Sender can be answered more than once.
 

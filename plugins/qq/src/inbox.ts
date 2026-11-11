@@ -1,13 +1,18 @@
+import { randomBytes } from 'node:crypto'
 import { chmodSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { InboundAttachment, InboundMessage, QQGateway } from './gateway.ts'
+import { AttachmentTooLargeError, type InboundAttachment, type InboundMessage, type QQGateway } from './gateway.ts'
 
 /**
  * QQ has no API to fetch a past message, so the attachment references of this
  * many recent messages are kept in memory, to be downloaded when Claude asks.
  */
 const REMEMBERED_MESSAGES = 200
-/** The largest attachment the Channel downloads, the same limit as the official discord plugin. */
+/**
+ * The largest attachment the Channel downloads, the same limit as the official
+ * discord plugin. The download stops as soon as more arrives, so no more than
+ * this is fetched or held in memory for one attachment.
+ */
 const MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024
 /** In UTF-8 bytes: file systems limit a name to 255, and the Channel adds a prefix. */
 const MAX_FILE_NAME_BYTES = 200
@@ -56,17 +61,24 @@ export function createInbox({
       }
       const dir = inboxDir(stateDir)
       mkdirSync(dir, { recursive: true, mode: 0o700 })
-      const stamp = now()
+      // The random part keeps downloads in the same millisecond apart, of one message or of two.
+      const prefix = `${now()}-${randomBytes(4).toString('hex')}`
       const paths: string[] = []
       for (const [index, attachment] of message.attachments.entries()) {
         const name = safeFileName(attachment.name)
-        // Checked against QQ's figure before fetching, and against the bytes after, as QQ does not always give one.
+        // QQ's figure saves a download that would be refused; the gateway counts the bytes, as QQ does not always give one.
         if ((attachment.size ?? 0) > MAX_DOWNLOAD_BYTES) throw tooLarge(name)
-        const bytes = await gateway.download(attachment.url)
+        let bytes: Uint8Array
+        try {
+          bytes = await gateway.download(attachment.url, MAX_DOWNLOAD_BYTES)
+        } catch (error) {
+          throw error instanceof AttachmentTooLargeError ? tooLarge(name) : error
+        }
         if (bytes.byteLength > MAX_DOWNLOAD_BYTES) throw tooLarge(name)
         // The prefix keeps two attachments with one name apart; the name itself can no longer leave the directory.
-        const path = join(dir, `${stamp}-${index + 1}-${name}`)
-        writeFileSync(path, bytes, { mode: 0o600 })
+        const path = join(dir, `${prefix}-${index + 1}-${name}`)
+        // `wx` fails rather than overwrite a file another download returned.
+        writeFileSync(path, bytes, { mode: 0o600, flag: 'wx' })
         chmodSync(path, 0o600)
         paths.push(path)
       }
