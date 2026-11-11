@@ -26,8 +26,8 @@ export function splitText(text: string, limit = MAX_MESSAGE_LENGTH): string[] {
       rest = rest.slice(cut)
     } else {
       chunks.push(rest.slice(0, breakAt))
-      // The whitespace the text was broken at is not carried into the next message.
-      rest = rest.slice(breakAt).replace(/^\s+/, '')
+      // The break itself is not carried into the next message, but indentation after it is kept.
+      rest = rest.slice(breakAt).replace(/^(\n+| )/, '')
     }
   }
   if (rest) chunks.push(rest)

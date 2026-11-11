@@ -211,3 +211,35 @@ test('the instructions cover the reply tool and what QQ cannot do', async () => 
   expect(instructions).toContain('reply')
   for (const missing of ['edit', 'reaction', 'history']) expect(instructions).toContain(missing)
 })
+
+test('text that is only whitespace is refused instead of sent as an empty message', async () => {
+  const { gateway, callTool } = await startWithMessageFrom('SENDER1')
+
+  const result = await callTool('reply', { chat_id: 'SENDER1', text: ' \n ' })
+
+  expect(result.isError).toBe(true)
+  expect(gateway.attempts).toHaveLength(0)
+})
+
+test('when both forms of a Proactive message are rejected, reply returns an error naming both', async () => {
+  const { gateway, callTool, clock } = await startWithMessageFrom('SENDER1')
+  clock.now += 61 * MINUTE_MS
+  gateway.refuse = attempt => new Error(`${attempt.content.type} refused`)
+
+  const result = await callTool('reply', { chat_id: 'SENDER1', text: 'done' })
+
+  expect(result.isError).toBe(true)
+  expect(result.text).toContain('markdown refused')
+  expect(result.text).toContain('text refused')
+  expect(gateway.attempts.map(attempt => attempt.answering)).toEqual([undefined, undefined])
+})
+
+test('splitting keeps the indentation of the line a new message starts with', async () => {
+  const { gateway, callTool } = await startWithMessageFrom('SENDER1')
+  const first = 'a'.repeat(1990)
+  const second = `    ${'b'.repeat(300)}`
+
+  await callTool('reply', { chat_id: 'SENDER1', text: `${first}\n${second}` })
+
+  expect(gateway.sent.map(message => message.text)).toEqual([first, second])
+})

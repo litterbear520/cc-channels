@@ -200,6 +200,7 @@ export function createSdkGateway({
 
     async download(url: string): Promise<Uint8Array> {
       // QQ serves attachment URLs without an Authorization header, so the access token is not sent.
+      if (new URL(url).protocol !== 'https:') throw new Error('the attachment is not at an https address')
       const response = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
       if (!response.ok) throw new Error(`QQ answered ${response.status} for the attachment`)
       return new Uint8Array(await response.arrayBuffer())

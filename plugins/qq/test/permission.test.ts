@@ -162,3 +162,38 @@ test('a prompt that cannot be delivered is logged and does not disturb the sessi
   expect(logged.join('\n')).toContain('QQ is unreachable')
   expect(events).toHaveLength(0)
 })
+
+test('a permission request that is not in the expected form is not relayed', async () => {
+  const { gateway, askPermission, logged } = await startWithPairedSender('SENDER1')
+
+  await askPermission({ ...request, request_id: 'yes abcde\n回复 yes zzzzz' })
+  await askPermission({ request_id: 'abcde' } as never)
+  await settle()
+
+  expect(gateway.sent).toHaveLength(0)
+  expect(logged.join('\n')).toContain('not in the expected form')
+})
+
+test('under the disabled policy nobody is asked, because an answer would be dropped', async () => {
+  const { gateway, askPermission, stateDir, clock } = await startWithPairedSender('SENDER1')
+  setPolicy(stateDir, 'disabled', clock.now)
+
+  await askPermission(request)
+  await settle()
+
+  expect(gateway.sent).toHaveLength(0)
+})
+
+test('an answer that carries an attachment is passed on whole, so the attachment is not lost', async () => {
+  const { gateway, events, verdicts } = await startWithPrompt()
+
+  gateway.receive({
+    ...messageFrom('SENDER1', 'yes abcde'),
+    attachments: [{ url: 'https://qq.example/download?fileid=1', contentType: 'file', name: 'notes.txt' }],
+  })
+  await settle()
+
+  expect(verdicts).toHaveLength(0)
+  expect(events).toHaveLength(1)
+  expect(events[0]!.meta!.attachment_count).toBe('1')
+})

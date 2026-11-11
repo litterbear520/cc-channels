@@ -178,3 +178,19 @@ test('an attachment QQ no longer serves returns an error', async () => {
   expect(result.isError).toBe(true)
   expect(result.text).toContain('404')
 })
+
+test('a very long file name is cut to fit a file system, keeping its extension', async () => {
+  const { gateway, callTool } = await startWithPairedSender('SENDER1')
+  const long = { url: 'https://qq.example/download?fileid=9', contentType: 'file', name: `${'报告'.repeat(200)}.pdf` }
+  gateway.downloadable.set(long.url, text('pdf bytes'))
+  const message = { ...messageFrom('SENDER1', ''), attachments: [long] }
+  gateway.receive(message)
+  await settle()
+
+  const result = await callTool('download_attachment', { chat_id: 'SENDER1', message_id: message.messageId })
+
+  expect(result.isError).toBe(false)
+  const [path] = pathsIn(result.text)
+  expect(path).toEndWith('报告.pdf')
+  expect(readFileSync(path!, 'utf8')).toBe('pdf bytes')
+})

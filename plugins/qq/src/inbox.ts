@@ -7,7 +7,8 @@ import type { InboundAttachment, InboundMessage, QQGateway } from './gateway.ts'
  * many recent messages are kept in memory, to be downloaded when Claude asks.
  */
 const REMEMBERED_MESSAGES = 200
-const MAX_FILE_NAME_LENGTH = 100
+/** In UTF-8 bytes: file systems limit a name to 255, and the Channel adds a prefix. */
+const MAX_FILE_NAME_BYTES = 200
 
 /** The directory downloaded attachments are saved in. The only part of the state directory Claude may send from. */
 export const inboxDir = (stateDir: string) => join(stateDir, 'inbox')
@@ -74,10 +75,11 @@ export function createInbox({
  */
 export function safeFileName(name: string | undefined): string {
   const lastPart = (name ?? '').split(/[\\/]/).at(-1)!
-  const safe = lastPart
-    .replace(/[^\p{L}\p{N}._-]/gu, '_')
-    .replace(/^\.+/, '')
-    .slice(-MAX_FILE_NAME_LENGTH)
+  let safe = lastPart.replace(/[^\p{L}\p{N}._-]/gu, '_')
+  // Cut from the front, a whole character at a time, so that the extension at the end is kept.
+  while (Buffer.byteLength(safe) > MAX_FILE_NAME_BYTES) safe = [...safe].slice(1).join('')
+  // Dots are stripped after the cut, which can expose new ones.
+  safe = safe.replace(/^\.+/, '')
   return safe || 'attachment'
 }
 

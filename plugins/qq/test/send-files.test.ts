@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach } from 'bun:test'
@@ -204,5 +204,19 @@ test('reply needs text or a file', async () => {
   const result = await callTool('reply', { chat_id: 'SENDER1', text: '' })
 
   expect(result.isError).toBe(true)
+  expect(gateway.sent).toHaveLength(0)
+})
+
+test('a file that cannot be read returns a clear error and sends nothing', async () => {
+  const { gateway, callTool, fileNamed } = await startWithFiles()
+  const locked = fileNamed('locked.txt')
+  chmodSync(locked, 0o000)
+
+  const result = await callTool('reply', { chat_id: 'SENDER1', text: 'hi', files: [locked] })
+
+  expect(result.isError).toBe(true)
+  expect(result.text).toContain('locked.txt')
+  expect(result.text).toContain('could not be read')
+  expect(result.text).toContain('nothing was sent')
   expect(gateway.sent).toHaveLength(0)
 })

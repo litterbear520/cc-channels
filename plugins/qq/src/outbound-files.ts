@@ -25,8 +25,9 @@ export function readFilesToSend(stateDir: string, paths: string[]): OutboundFile
     let real: string
     try {
       real = realpathSync(path)
-    } catch {
-      throw new Error(`${path} does not exist`)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new Error(`${path} does not exist`)
+      throw new Error(`${path} could not be read: ${error instanceof Error ? error.message : String(error)}`)
     }
     if (isKeptPrivate(stateDir, real)) {
       throw new Error(

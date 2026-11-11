@@ -22,6 +22,25 @@ export interface Verdict {
  * bare "yes" does not match, so ordinary conversation never approves anything.
  */
 const ANSWER = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i
+const REQUEST_ID = /^[a-km-z]{5}$/
+
+/**
+ * Checks what arrived as a permission request. Returns undefined unless it has
+ * a request ID of the documented shape and text in the other fields, so that
+ * nothing else is ever put into a message to a Sender.
+ */
+export function readPermissionRequest(params: unknown): PermissionRequest | undefined {
+  if (typeof params !== 'object' || params === null) return undefined
+  const { request_id, tool_name, description, input_preview } = params as Record<string, unknown>
+  if (typeof request_id !== 'string' || !REQUEST_ID.test(request_id)) return undefined
+  if (typeof tool_name !== 'string') return undefined
+  return {
+    request_id,
+    tool_name,
+    description: typeof description === 'string' ? description : '',
+    input_preview: typeof input_preview === 'string' ? input_preview : '',
+  }
+}
 
 /** Reads a message as an answer to a permission prompt, or returns undefined when it is not exactly one. */
 export function parseVerdict(text: string): Verdict | undefined {
@@ -33,12 +52,13 @@ export function parseVerdict(text: string): Verdict | undefined {
   }
 }
 
+const MAX_TOOL_NAME_LENGTH = 100
 const MAX_DESCRIPTION_LENGTH = 300
 const MAX_PREVIEW_LENGTH = 600
 
 /** The prompt a paired Sender receives. Chinese, and sent as plain text like everything the bot says itself. */
 export function permissionPrompt(request: PermissionRequest): string {
-  const lines = ['Claude 请求使用工具，需要你批准：', '', `工具：${shortened(request.tool_name, MAX_DESCRIPTION_LENGTH)}`]
+  const lines = ['Claude 请求使用工具，需要你批准：', '', `工具：${shortened(request.tool_name, MAX_TOOL_NAME_LENGTH)}`]
   if (request.description) lines.push(`说明：${shortened(request.description, MAX_DESCRIPTION_LENGTH)}`)
   if (request.input_preview) lines.push(`参数：${shortened(request.input_preview, MAX_PREVIEW_LENGTH)}`)
   lines.push(

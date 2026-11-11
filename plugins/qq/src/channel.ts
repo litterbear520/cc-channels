@@ -7,7 +7,7 @@ import { readCredentials } from './credentials.ts'
 import { CredentialsRejectedError, type InboundMessage, type OutboundContent, type OutboundFile, type QQGateway } from './gateway.ts'
 import { createInbox, describeAttachments } from './inbox.ts'
 import { readFilesToSend } from './outbound-files.ts'
-import { parseVerdict, permissionPrompt, type PermissionRequest } from './permission.ts'
+import { parseVerdict, permissionPrompt, readPermissionRequest, type PermissionRequest } from './permission.ts'
 import { createReplyPolicy } from './reply-policy.ts'
 
 export interface Channel {
@@ -176,7 +176,12 @@ export function createChannel({
   // no schema for this notification, so it arrives through the fallback handler.
   mcp.fallbackNotificationHandler = async notification => {
     if (notification.method !== 'notifications/claude/channel/permission_request') return
-    relayPermissionRequest(notification.params as unknown as PermissionRequest)
+    const request = readPermissionRequest(notification.params)
+    if (!request) {
+      log('ignored a permission request that was not in the expected form')
+      return
+    }
+    relayPermissionRequest(request)
   }
 
   /** Sends the prompt to every paired Sender. The terminal prompt stays open, and the first answer wins. */
@@ -211,7 +216,8 @@ export function createChannel({
     } catch (error) {
       throw new Error(`${scrub(error)}; nothing was sent`)
     }
-    const chunks = splitText(text)
+    // Text that is only whitespace would arrive as an empty message.
+    const chunks = text.trim() ? splitText(text) : []
     // Each part is one QQ message: the text in order, then the files in order.
     const parts = [
       ...chunks.map((chunk, index) => ({
@@ -277,7 +283,8 @@ export function createChannel({
       return
     }
     // Only a message that got this far, from an allowlisted Sender, can be a verdict.
-    const verdict = parseVerdict(message.text)
+    // One that carries attachments is passed on whole, so that they are not lost.
+    const verdict = message.attachments.length === 0 ? parseVerdict(message.text) : undefined
     if (verdict) {
       await mcp.notification({
         method: 'notifications/claude/channel/permission',
