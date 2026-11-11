@@ -1,5 +1,4 @@
-import { afterEach } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
@@ -7,14 +6,8 @@ import { approvePairing } from '../src/access.ts'
 import { createChannel } from '../src/channel.ts'
 import { saveCredentials, type Credentials } from '../src/credentials.ts'
 import type { InboundMessage } from '../src/gateway.ts'
+import { removeAfterTest, stopAfterTest } from './cleanup.ts'
 import { FakeQQGateway } from './fake-gateway.ts'
-
-const stateDirs: string[] = []
-const stopAfterTest: (() => Promise<void>)[] = []
-afterEach(async () => {
-  for (const stop of stopAfterTest.splice(0)) await stop().catch(() => {})
-  for (const dir of stateDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
-})
 
 export const credentials: Credentials = { appId: '102000001', appSecret: 'test-app-secret' }
 
@@ -28,7 +21,7 @@ export async function startChannel({
   pairingCodes = [] as string[],
 } = {}) {
   const stateDir = mkdtempSync(join(tmpdir(), 'qq-channel-test-'))
-  stateDirs.push(stateDir)
+  removeAfterTest(stateDir)
   if (configured) saveCredentials(stateDir, credentials)
 
   const logged: string[] = []
@@ -43,7 +36,7 @@ export async function startChannel({
     ...(pairingCodes.length > 0 ? { newPairingCode: () => pairingCodes.shift() ?? 'ffffff' } : {}),
     approvalPollMs: 2,
   })
-  stopAfterTest.push(() => channel.stop())
+  stopAfterTest(() => channel.stop())
   const [claudeCodeSide, channelSide] = InMemoryTransport.createLinkedPair()
 
   const pending = new Map<number, { resolve: (result: any) => void; reject: (error: Error) => void }>()

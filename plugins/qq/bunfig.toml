@@ -1,0 +1,3 @@
+[test]
+# Registers the clean-up after every test in every file; see test/cleanup.ts.
+preload = ["./test/cleanup.ts"]
