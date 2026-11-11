@@ -89,7 +89,8 @@ Later the same day, in a real session started with the flag, the maintainer repo
 
 | Steps | Outcome |
 | --- | --- |
-| 11, 12 | A message sent from QQ was answered by Claude in the Direct chat. Whether the Markdown test of step 12 (bold, a list, a code block) was tried is not recorded. |
-| 16, 17 | The image and the file arrived in the QQ client and displayed normally. |
+| 11, 12 | A message sent from QQ was answered by Claude in the Direct chat, and Markdown rendered. |
+| 13 | An answer of more than 2000 characters arrived as several messages. |
+| 14 to 17 | Images and files worked in both directions and displayed normally. |
 
-Still not run: 7, 13 to 15, and 18 to 26.
+Not run, by the maintainer's decision to deal with them if a problem shows up: 7 and 18 to 26, which include the 5 MB and state-directory refusals, the whole permission relay, and the allowlist and disabled policies. Those are covered by the automated tests only.
