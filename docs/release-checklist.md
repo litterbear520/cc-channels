@@ -85,4 +85,11 @@ Bot owned by an unverified individual account; the only Sender was the bot's cre
 | 12, 16, 17 | QQ accepted a Markdown message, a `.png` image, and a `.txt` file sent by the `reply` tool, with a script standing in for Claude Code, all as Proactive messages. How they displayed in the QQ client has not been confirmed. |
 | 13 to 15, 18 to 26 | Not run. |
 
-The full pass in a real session is still to be done by the maintainer.
+Later the same day, in a real session started with the flag, the maintainer reported:
+
+| Steps | Outcome |
+| --- | --- |
+| 11, 12 | A message sent from QQ was answered by Claude in the Direct chat. Whether the Markdown test of step 12 (bold, a list, a code block) was tried is not recorded. |
+| 16, 17 | The image and the file arrived in the QQ client and displayed normally. |
+
+Still not run: 7, 13 to 15, and 18 to 26.
