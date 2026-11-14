@@ -20,28 +20,29 @@ export interface QQGateway {
    */
   connect(credentials: Credentials, events: GatewayEvents): Promise<void>
   /**
-   * Sends one message to a Sender's Direct chat: as a Passive reply when
-   * `answering` names an inbound message, otherwise as a Proactive message.
-   * Resolves with the ID QQ gave the message.
+   * Sends one message to a Direct chat or a Group chat, named by its chat ID:
+   * as a Passive reply when `answering` names an inbound message of that chat,
+   * otherwise as a Proactive message. Resolves with the ID QQ gave the message.
    *
    * Rejects with {@link SendRefusedError} only when it is certain that QQ did
    * not take the message: QQ answered with an error, or the request never left.
    * Any other rejection means the message may have arrived, for example when
    * the connection broke before QQ's answer came back.
    */
-  send(senderId: string, content: OutboundContent, answering?: PassiveReplyTarget): Promise<string>
+  send(chatId: string, content: OutboundContent, answering?: PassiveReplyTarget): Promise<string>
   /**
    * Shows the bot as typing in a Sender's Direct chat for a while, in answer
    * to one of their messages. It is not a message: QQ returns no ID for it, and
-   * it does not use up a Passive reply's sequence number.
+   * it does not use up a Passive reply's sequence number. QQ has no typing
+   * status in a Group chat.
    */
   showTyping(senderId: string, messageId: string): Promise<void>
   /**
-   * Uploads a file for one Sender's Direct chat and resolves with QQ's
-   * reference to it, which a `media` message then sends. Rejects when QQ does
-   * not take the file.
+   * Uploads a file for one chat and resolves with QQ's reference to it, which
+   * a `media` message to the same chat then sends. Rejects when QQ does not
+   * take the file.
    */
-  upload(senderId: string, file: OutboundFile): Promise<string>
+  upload(chatId: string, file: OutboundFile): Promise<string>
   /**
    * Fetches an inbound attachment's bytes. Rejects with
    * {@link AttachmentTooLargeError} as soon as more than `maxBytes` arrive,
@@ -53,16 +54,29 @@ export interface QQGateway {
 }
 
 export interface GatewayEvents {
-  /** A message arrived in a Direct chat. QQ may deliver the same message more than once. */
+  /** A message arrived in a Direct chat or a Group chat. QQ may deliver the same message more than once. */
   onMessage(message: InboundMessage): void
   onLost(error: Error): void
 }
 
-/** A message a Sender wrote to the bot in a Direct chat. */
+/** A message a Sender wrote to the bot in a Direct chat, or wrote in a Group chat the bot is in. */
 export interface InboundMessage {
   messageId: string
-  /** QQ's `user_openid`, which also identifies the Direct chat. */
+  /**
+   * QQ's ID for the Sender, which also identifies their Direct chat. The live
+   * check found a Sender has the same ID in a Group chat (`member_openid`) as
+   * in their Direct chat (`user_openid`).
+   */
   senderId: string
+  /** The name the Sender shows in the group. QQ sends none in a Direct chat. */
+  senderName?: string
+  /** Set when the message was written in a Group chat. */
+  group?: {
+    /** QQ's `group_openid`. */
+    id: string
+    /** True when the message mentions the bot with an @. */
+    mentionsBot: boolean
+  }
   text: string
   /** When the Sender wrote it, as QQ reports it (ISO 8601). */
   timestamp: string
@@ -85,7 +99,7 @@ export interface InboundAttachment {
   size?: number
 }
 
-/** What one outbound message carries. QQ renders `markdown` in a Direct chat and shows `text` as written. */
+/** What one outbound message carries. QQ renders `markdown` and shows `text` as written. */
 export type OutboundContent =
   | { type: 'text'; text: string; quoting?: QuoteRef }
   | { type: 'markdown'; text: string; quoting?: QuoteRef }

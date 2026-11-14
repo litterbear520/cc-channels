@@ -93,10 +93,25 @@ Pairing 码一小时后过期。同时最多有三个码等待批准；已经有
 | `/qq:access policy pairing` | 陌生 Sender 会收到 Pairing 码（默认） |
 | `/qq:access policy allowlist` | 忽略陌生 Sender。配置完成后建议切到这个策略 |
 | `/qq:access policy disabled` | 忽略所有 Sender，Claude 也不能回复或下载附件 |
+| `/qq:access group mention <GroupID> on\|off` | 已登记的群是只在 @机器人 时响应（`on`，默认），还是响应每条消息 |
+| `/qq:access group members <GroupID> allowlist\|everyone` | 已登记的群是只听 allowlist 上的 Sender（默认），还是听所有群成员 |
+| `/qq:access group remove <GroupID>` | 不再响应某个群 |
 
 访问权限只能在你的终端里修改。Channel 会告诉 Claude：绝不因为 QQ 消息的要求而修改它。
 
 allowlist 上的任何人都能向你的 Claude Code 会话下指令，权限与该会话相同。只给你愿意让他在你终端里打字的人做 Pairing。
+
+### 7. 在群里使用（可选）
+
+1. 把机器人加进一个 QQ 群。未认证的机器人只能加入创建者是群主或管理员的群。
+2. 在群里 @机器人 并随便写点什么。你必须已经在 allowlist 上；在未登记的群里，机器人不回应其他任何人。它会回一个这个群的 Pairing 码。
+3. 在终端里运行 `/qq:access pair <code>`。机器人会在群里确认。
+
+刚登记的群范围很窄：机器人只听 allowlist 上的 Sender，而且只在被 @ 时响应。`/qq:access` 会列出已登记的群和它们的 Group ID，上面的 `group` 命令要用到这个 ID。
+
+- **想不 @ 也被听到**，需要群主在 QQ 里打开机器人的"接收全部消息"设置，然后你运行 `/qq:access group mention <GroupID> off`。不开 QQ 的这个设置，QQ 只把 @机器人 的消息发给它。打开之后，单独发的图片也能到达机器人；手机 QQ 不能把 @ 和图片放在同一条消息里，所以这一点有用。
+- **`/qq:access group members <GroupID> everyone` 会让群里每个成员都能向你的会话下指令**，权限与该会话相同。群成员没有逐个做过 Pairing，所以只对"每个成员你都愿意让他在你终端里打字"的群使用。
+- 工具权限请求不会发到群里，在群里写的回答也不会被当作批准。它们只在已配对 Sender 的 Direct chat 里进行。
 
 ## 在 QQ 里能做什么
 
@@ -110,8 +125,9 @@ allowlist 上的任何人都能向你的 Claude Code 会话下指令，权限与
 
 ## 限制
 
-- **只支持 Direct chat。** 不支持群聊和 Guild（QQ 频道）。
-- **不能编辑消息、不能加表情回应、不能查历史。** QQ 在 Direct chat 里不向机器人提供这些能力。Claude 要更正时会另发一条新消息，也无法查看更早的消息。
+- **支持 Direct chat 和群聊。** 不支持 Guild（QQ 频道）。
+- **给群的回答要快。** QQ 文档规定，机器人对一条群消息最多能在 5 分钟内发 5 条 Passive reply。超出之后 Channel 改发 Proactive message，而群只有在群主允许机器人主动发言时才接收；在本项目的实机测试里，打开这个设置之前 QQ 拒绝了它（"主动消息失败, 无权限"）。所以长任务的结果可能发不回群里，发不出去时 Claude 会得知。机器人在群里不显示"输入中"，因为 QQ 在群里没有这个能力。
+- **不能编辑消息、不能加表情回应、不能查历史。** QQ 不向机器人提供这些能力。Claude 要更正时会另发一条新消息，也无法查看更早的消息。
 - **文件最大 5 MB。** 更大的文件会被拒绝；没有实现 QQ 的分片上传。
 - **Passive reply 的限制。** QQ 文档规定，机器人对一条收到的消息最多能在 60 分钟内发 4 条 Passive reply（被动回复）。Channel 遵守这两个限制：在限制之内，对你最近一条消息发 Passive reply；超出之后改发 Proactive message（主动消息），而 QQ 允许接收者关闭主动消息。两种都发不出去时，Claude 会得知原因；消息不会排队，也不会事后重试。QQ 还没回应连接就断了时，消息可能已经送达也可能没有：不会再发一次，Claude 会得知这一点。在本项目的实机测试里，唯一的 Sender 是机器人的创建者，这两个限制都没有生效（同一条消息收下了 39 条 Passive reply，最后一条在 61 分钟之后），Sender 关闭主动消息后 Proactive message 仍然送达。其他 Sender 可能会受到文档所写限制的约束。
 - **只能取回近期消息的附件。** QQ 没有按消息 ID 取回历史消息的接口，所以 Channel 把近期消息的附件引用记在内存里，重启后就没有了。

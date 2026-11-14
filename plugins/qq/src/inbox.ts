@@ -21,13 +21,13 @@ const MAX_FILE_NAME_BYTES = 200
 export const inboxDir = (stateDir: string) => join(stateDir, 'inbox')
 
 export interface Inbox {
-  /** Keeps a message's attachment references for a later download. */
-  remember(message: InboundMessage): void
+  /** Keeps the attachment references of a message that arrived in a chat, for a later download. */
+  remember(chatId: string, message: InboundMessage): void
   /**
-   * Downloads the attachments of a remembered message from this Sender into
-   * the inbox directory and returns their local paths.
+   * Downloads the attachments of a remembered message of this chat into the
+   * inbox directory and returns their local paths.
    */
-  download(senderId: string, messageId: string): Promise<string[]>
+  download(chatId: string, messageId: string): Promise<string[]>
 }
 
 export function createInbox({
@@ -39,20 +39,20 @@ export function createInbox({
   stateDir: string
   now: () => number
 }): Inbox {
-  const remembered = new Map<string, { senderId: string; attachments: InboundAttachment[] }>()
+  const remembered = new Map<string, { chatId: string; attachments: InboundAttachment[] }>()
 
   return {
-    remember(message) {
+    remember(chatId, message) {
       if (message.attachments.length === 0) return
-      remembered.set(message.messageId, { senderId: message.senderId, attachments: message.attachments })
+      remembered.set(message.messageId, { chatId, attachments: message.attachments })
       // A Map iterates in insertion order, so this forgets the oldest.
       if (remembered.size > REMEMBERED_MESSAGES) remembered.delete(remembered.keys().next().value!)
     },
 
-    async download(senderId, messageId) {
+    async download(chatId, messageId) {
       const message = remembered.get(messageId)
-      // A message from another Sender is reported the same way, so that its existence is not revealed.
-      if (!message || message.senderId !== senderId) {
+      // A message of another chat is reported the same way, so that its existence is not revealed.
+      if (!message || message.chatId !== chatId) {
         throw new Error(
           `the Channel no longer remembers attachments for message ${messageId}. QQ cannot be asked for a past ` +
             `message, so the references of the last ${REMEMBERED_MESSAGES} messages with attachments are kept in ` +

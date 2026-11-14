@@ -12,7 +12,8 @@ import {
 
 /** One message the Channel asked QQ to send. */
 export interface SendAttempt {
-  senderId: string
+  /** The chat the message was for: a Sender's ID, or `group:` and a group's ID. */
+  chatId: string
   content: OutboundContent
   /** The text of a text or Markdown message. */
   text?: string
@@ -44,7 +45,7 @@ export class FakeQQGateway implements QQGateway {
   sent: SentMessage[] = []
 
   /** The files the Channel uploaded, in order. An upload's reference is `file-info-<n>`, counting from 1. */
-  uploads: (OutboundFile & { senderId: string })[] = []
+  uploads: (OutboundFile & { chatId: string })[] = []
   /** Set to make QQ refuse every upload for which this returns an error. */
   refuseUpload: (file: OutboundFile) => Error | undefined = () => undefined
   /** The typing statuses the Channel showed, in order. */
@@ -69,7 +70,7 @@ export class FakeQQGateway implements QQGateway {
     this.events = events
   }
 
-  /** Delivers a Direct chat message, as QQ would. */
+  /** Delivers a Direct chat or Group chat message, as QQ would. */
   receive(message: InboundMessage): void {
     this.events?.onMessage(message)
   }
@@ -80,9 +81,9 @@ export class FakeQQGateway implements QQGateway {
     this.events?.onLost(error)
   }
 
-  async send(senderId: string, content: OutboundContent, answering?: PassiveReplyTarget): Promise<string> {
+  async send(chatId: string, content: OutboundContent, answering?: PassiveReplyTarget): Promise<string> {
     const attempt: SendAttempt = {
-      senderId,
+      chatId,
       content,
       ...('text' in content ? { text: content.text } : {}),
       ...(answering ? { answering } : {}),
@@ -95,10 +96,10 @@ export class FakeQQGateway implements QQGateway {
     return id
   }
 
-  async upload(senderId: string, file: OutboundFile): Promise<string> {
+  async upload(chatId: string, file: OutboundFile): Promise<string> {
     const failure = this.refuseUpload(file)
     if (failure) throw failure
-    this.uploads.push({ ...file, senderId })
+    this.uploads.push({ ...file, chatId })
     return `file-info-${this.uploads.length}`
   }
 

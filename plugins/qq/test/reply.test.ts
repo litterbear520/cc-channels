@@ -26,7 +26,7 @@ test('reply answers the Sender\'s latest message with a Markdown Passive reply a
   expect(result.isError).toBe(false)
   expect(result.text).toContain('sent-1')
   expect(gateway.sent).toHaveLength(1)
-  expect(gateway.sent[0]!.senderId).toBe('SENDER1')
+  expect(gateway.sent[0]!.chatId).toBe('SENDER1')
   expect(gateway.sent[0]!.content).toEqual({ type: 'markdown', text: 'The build is **green**.' })
   expect(gateway.sent[0]!.answering).toEqual({ messageId: inbound.messageId, sequence: 1 })
 })
@@ -371,7 +371,7 @@ test('five messages sent at once to one Sender use four Passive replies, and oth
     policy.deliver('SENDER2', [{ type: 'text', text: 'other' }]),
   ])
 
-  const passive = (senderId: string) => gateway.sent.filter(message => message.senderId === senderId && message.answering)
+  const passive = (senderId: string) => gateway.sent.filter(message => message.chatId === senderId && message.answering)
   expect(passive('SENDER1')).toHaveLength(PASSIVE_REPLIES_PER_MESSAGE)
   expect(passive('SENDER2')).toHaveLength(1)
 })

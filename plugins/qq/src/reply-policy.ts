@@ -1,3 +1,4 @@
+import { groupIdOf } from './chat-id.ts'
 import { SendRefusedError, type OutboundContent, type QQGateway } from './gateway.ts'
 
 /**
@@ -7,9 +8,17 @@ import { SendRefusedError, type OutboundContent, type QQGateway } from './gatewa
  */
 export const PASSIVE_REPLY_WINDOW_MS = 60 * 60 * 1000
 export const PASSIVE_REPLIES_PER_MESSAGE = 4
+/** QQ's documented limits in a Group chat, which are much tighter. Not reached in the live check either. */
+export const GROUP_PASSIVE_REPLY_WINDOW_MS = 5 * 60 * 1000
+export const GROUP_PASSIVE_REPLIES_PER_MESSAGE = 5
 
-/** Senders whose latest message is remembered. Unknown Senders are among them, so it is bounded. */
-const REMEMBERED_SENDERS = 1000
+const limitsOf = (chatId: string) =>
+  groupIdOf(chatId) === undefined
+    ? { windowMs: PASSIVE_REPLY_WINDOW_MS, replies: PASSIVE_REPLIES_PER_MESSAGE }
+    : { windowMs: GROUP_PASSIVE_REPLY_WINDOW_MS, replies: GROUP_PASSIVE_REPLIES_PER_MESSAGE }
+
+/** Chats whose latest message is remembered. Unknown Senders' are among them, so it is bounded. */
+const REMEMBERED_CHATS = 1000
 
 interface LatestInbound {
   messageId: string
@@ -33,13 +42,13 @@ export class DeliveryUnknownError extends Error {
 }
 
 export interface ReplyPolicy {
-  /** Records that a Sender wrote. Their next messages are answered as Passive replies to this one. */
-  noteInbound(senderId: string, messageId: string): void
+  /** Records that a message arrived in a chat. The next messages to that chat are Passive replies to this one. */
+  noteInbound(chatId: string, messageId: string): void
   /**
-   * Sends one message to a Sender and resolves with its ID. `forms` holds the
+   * Sends one message to a chat and resolves with its ID. `forms` holds the
    * same message in order of preference, such as Markdown and then plain text.
    *
-   * While QQ's window and count allow, it is a Passive reply to the Sender's
+   * While QQ's window and count allow, it is a Passive reply to the chat's
    * latest message; if QQ refuses every form, the last form is sent once as a
    * Proactive message. Otherwise each form is tried as a Proactive message.
    * Only a refusal ({@link SendRefusedError}) moves on to the next try.
@@ -48,28 +57,28 @@ export interface ReplyPolicy {
    * {@link DeliveryUnknownError}, without trying anything more, when QQ may
    * have taken a try. Nothing is queued or tried again later.
    */
-  deliver(senderId: string, forms: OutboundContent[]): Promise<string>
+  deliver(chatId: string, forms: OutboundContent[]): Promise<string>
 }
 
 export function createReplyPolicy({ gateway, now }: { gateway: QQGateway; now: () => number }): ReplyPolicy {
   const latest = new Map<string, LatestInbound>()
 
   return {
-    noteInbound(senderId, messageId) {
-      // Deleted first so that the Sender moves to the end, which is the newest.
-      latest.delete(senderId)
-      latest.set(senderId, { messageId, arrivedAt: now(), attempts: 0, used: 0 })
-      if (latest.size > REMEMBERED_SENDERS) latest.delete(latest.keys().next().value!)
+    noteInbound(chatId, messageId) {
+      // Deleted first so that the chat moves to the end, which is the newest.
+      latest.delete(chatId)
+      latest.set(chatId, { messageId, arrivedAt: now(), attempts: 0, used: 0 })
+      if (latest.size > REMEMBERED_CHATS) latest.delete(latest.keys().next().value!)
     },
 
-    async deliver(senderId, forms) {
+    async deliver(chatId, forms) {
       const refusals: string[] = []
       /** Resolves with the message ID, or with undefined when QQ refused it. */
       const attempt = async (content: OutboundContent, answering?: LatestInbound): Promise<string | undefined> => {
         const mode = answering ? 'Passive reply' : 'Proactive message'
         try {
           const target = answering && { messageId: answering.messageId, sequence: ++answering.attempts }
-          return await gateway.send(senderId, content, target)
+          return await gateway.send(chatId, content, target)
         } catch (error) {
           const reason = `${mode} as ${content.type}: ${error instanceof Error ? error.message : String(error)}`
           if (!(error instanceof SendRefusedError)) {
@@ -81,13 +90,10 @@ export function createReplyPolicy({ gateway, now }: { gateway: QQGateway; now: (
         }
       }
 
-      const inbound = latest.get(senderId)
+      const inbound = latest.get(chatId)
+      const limits = limitsOf(chatId)
       const passive =
-        inbound &&
-        now() - inbound.arrivedAt < PASSIVE_REPLY_WINDOW_MS &&
-        inbound.used < PASSIVE_REPLIES_PER_MESSAGE
-          ? inbound
-          : undefined
+        inbound && now() - inbound.arrivedAt < limits.windowMs && inbound.used < limits.replies ? inbound : undefined
       if (passive) {
         // Taken before anything is awaited; given back only when QQ refused every form.
         passive.used++

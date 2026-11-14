@@ -111,6 +111,11 @@ export function messageFrom(senderId: string, text = '你好'): InboundMessage {
   return { messageId: `msg-${messageCount}`, senderId, text, timestamp: '2026-11-11T09:00:00+08:00', attachments: [] }
 }
 
+/** A message the given Sender wrote in a Group chat, mentioning the bot unless told otherwise. */
+export function groupMessageFrom(senderId: string, groupId: string, text = '你好', mentionsBot = true): InboundMessage {
+  return { ...messageFrom(senderId, text), senderName: `name of ${senderId}`, group: { id: groupId, mentionsBot } }
+}
+
 /** Starts a connected Channel whose session has finished its handshake. */
 export async function startConnected(options: Parameters<typeof startChannel>[0] = {}) {
   const started = await startChannel(options)

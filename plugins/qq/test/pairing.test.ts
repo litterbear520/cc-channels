@@ -14,7 +14,7 @@ test('an unknown Sender is answered with a Pairing code in Chinese and is not de
   await settle()
 
   expect(gateway.sent).toHaveLength(1)
-  expect(gateway.sent[0]!.senderId).toBe('SENDER1')
+  expect(gateway.sent[0]!.chatId).toBe('SENDER1')
   expect(gateway.sent[0]!.answering).toEqual({ messageId: message.messageId, sequence: 1 })
   expect(gateway.sent[0]!.text).toContain('/qq:access pair a1b2c3')
   expect(gateway.sent[0]!.text).toContain('配对')
@@ -39,7 +39,7 @@ test('approving the code lets the Sender in and confirms it in the Direct chat',
   await settle()
 
   expect(gateway.sent).toHaveLength(2)
-  expect(gateway.sent[1]!.senderId).toBe('SENDER1')
+  expect(gateway.sent[1]!.chatId).toBe('SENDER1')
   expect(gateway.sent[1]!.text).toContain('配对成功')
   // Still inside the window of the message that asked for the Pairing, so it is a second Passive reply to it.
   expect(gateway.sent[1]!.answering).toEqual({ messageId: gateway.sent[0]!.answering!.messageId, sequence: 2 })
@@ -103,14 +103,14 @@ test('no more than three Pairing codes are pending at once', async () => {
     gateway.receive(messageFrom(sender))
     await settle()
   }
-  expect(gateway.sent.map(sent => sent.senderId)).toEqual(['SENDER1', 'SENDER2', 'SENDER3'])
+  expect(gateway.sent.map(sent => sent.chatId)).toEqual(['SENDER1', 'SENDER2', 'SENDER3'])
 
   // Once the pending codes have expired there is room again.
   clock.now += HOUR_MS + 1
   gateway.receive(messageFrom('SENDER4'))
   await settle()
   expect(gateway.sent).toHaveLength(4)
-  expect(gateway.sent[3]!.senderId).toBe('SENDER4')
+  expect(gateway.sent[3]!.chatId).toBe('SENDER4')
 })
 
 test('under the allowlist policy an unknown Sender gets no reply and paired Senders still get through', async () => {

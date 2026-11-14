@@ -192,6 +192,55 @@ test('a Direct chat event becomes an inbound message, attachments and quoting in
   expect(quoting?.attachments).toEqual([{ url: 'https://qq.example/a', contentType: 'file', name: 'a.txt', size: 12 }])
 })
 
-test('an event from any other kind of chat is left out', () => {
+test('an event from a Guild is left out', () => {
+  expect(toInboundMessage(event({ kind: 'guild' }))).toBeUndefined()
+  expect(toInboundMessage(event({ kind: 'dm' }))).toBeUndefined()
+})
+
+test('a group event QQ sends for a mention becomes a Group chat message that mentions the bot', () => {
+  // QQ takes the mention out of this event's text and leaves the space after it.
+  const message = toInboundMessage(
+    event({ rawEventType: 'GROUP_AT_MESSAGE_CREATE', kind: 'group', groupOpenid: 'GROUP1', senderName: '小明', content: ' 你好' }),
+  )
+
+  expect(message).toEqual({
+    messageId: 'ROBOT1.0_abc',
+    senderId: 'SENDER1',
+    senderName: '小明',
+    group: { id: 'GROUP1', mentionsBot: true },
+    text: '你好',
+    timestamp: '2026-11-11T09:00:00+08:00',
+    attachments: [],
+  })
+})
+
+test('in a group that sends every message, the mention list tells whether the bot was mentioned', () => {
+  const everyMessage = { rawEventType: 'GROUP_MESSAGE_CREATE', kind: 'group', groupOpenid: 'GROUP1' } as const
+
+  const plain = toInboundMessage(event({ ...everyMessage, content: 'lunch?' }))
+  expect(plain?.group).toEqual({ id: 'GROUP1', mentionsBot: false })
+  expect(plain?.text).toBe('lunch?')
+
+  const mentioning = toInboundMessage(
+    event({
+      ...everyMessage,
+      content: '<@BOT1> ask <@MEMBER2> about it',
+      mentions: [
+        { id: 'BOT1', member_openid: 'BOT1', username: 'Vanilla', bot: true, is_you: true },
+        { id: 'MEMBER2', member_openid: 'MEMBER2', username: '小红', bot: false },
+      ],
+    }),
+  )
+  expect(mentioning?.group).toEqual({ id: 'GROUP1', mentionsBot: true })
+  // The bot's own mention is taken out; another member's is shown by name.
+  expect(mentioning?.text).toBe('ask @小红 about it')
+
+  const someoneElse = toInboundMessage(
+    event({ ...everyMessage, content: '<@MEMBER2> hi', mentions: [{ id: 'MEMBER2', username: '小红', is_you: false }] }),
+  )
+  expect(someoneElse?.group?.mentionsBot).toBe(false)
+})
+
+test('a group event without a group ID is left out', () => {
   expect(toInboundMessage(event({ kind: 'group' }))).toBeUndefined()
 })

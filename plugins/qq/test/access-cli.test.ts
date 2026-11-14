@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test'
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { approvePairing, decide, readAccess, takeApprovedSenders } from '../src/access.ts'
+import { approvePairing, decide, readAccess, takeApproved } from '../src/access.ts'
 
 const stateDirs: string[] = []
 afterEach(() => {
@@ -25,7 +25,7 @@ function access(stateDir: string, ...args: string[]) {
 
 /** Has an unknown Sender message the bot, as the Channel would see it, and be given this code. */
 function unknownSenderWrites(stateDir: string, senderId: string, code: string): void {
-  decide(stateDir, senderId, Date.now(), () => code)
+  decide(stateDir, { senderId }, Date.now(), () => code)
 }
 
 test('status on a machine where nobody has written yet shows the defaults', () => {
@@ -47,8 +47,8 @@ test('pair approves a pending code, and status then lists the Sender', () => {
 
   expect(paired.exitCode).toBe(0)
   expect(paired.output).toContain('SENDER1')
-  expect(decide(stateDir, 'SENDER1', Date.now(), () => 'unused')).toEqual({ action: 'deliver' })
-  expect(takeApprovedSenders(stateDir)).toEqual(['SENDER1'])
+  expect(decide(stateDir, { senderId: 'SENDER1' }, Date.now(), () => 'unused')).toEqual({ action: 'deliver' })
+  expect(takeApproved(stateDir)).toEqual(['SENDER1'])
   const status = access(stateDir, 'status').output
   expect(status).toContain('Allowed Senders: 1\n  SENDER1')
   expect(status).toContain('Pending Pairings: 0')
@@ -72,7 +72,7 @@ test('pair refuses a code nobody was given', () => {
 
   expect(exitCode).toBe(1)
   expect(output).toContain('No pending Pairing')
-  expect(takeApprovedSenders(stateDir)).toEqual([])
+  expect(takeApproved(stateDir)).toEqual([])
 })
 
 test('deny discards a pending code', () => {
@@ -135,9 +135,9 @@ test('a command with a missing or extra value prints the usage', () => {
 
 /** Has SENDER1 paired, as at the start of each case below. */
 function pairedSender(stateDir: string): void {
-  decide(stateDir, 'SENDER1', Date.now(), () => 'a1b2c3')
+  decide(stateDir, { senderId: 'SENDER1' }, Date.now(), () => 'a1b2c3')
   approvePairing(stateDir, 'a1b2c3', Date.now())
-  takeApprovedSenders(stateDir)
+  takeApproved(stateDir)
 }
 
 test('a command run while the Channel is changing the access file waits, and neither change is lost', async () => {
@@ -145,7 +145,7 @@ test('a command run while the Channel is changing the access file waits, and nei
   pairedSender(stateDir)
 
   let command: ReturnType<typeof Bun.spawn> | undefined
-  decide(stateDir, 'STRANGER', Date.now(), () => {
+  decide(stateDir, { senderId: 'STRANGER' }, Date.now(), () => {
     command = Bun.spawn(['bun', join(import.meta.dir, '..', 'access.ts'), 'remove', 'SENDER1'], {
       env: { ...process.env, QQ_STATE_DIR: stateDir },
       stdout: 'ignore',
@@ -168,7 +168,7 @@ test('a command cut off by a long-held access file fails, and nothing undoes a c
   pairedSender(stateDir)
 
   let during: ReturnType<typeof access> | undefined
-  decide(stateDir, 'STRANGER', Date.now(), () => {
+  decide(stateDir, { senderId: 'STRANGER' }, Date.now(), () => {
     during = access(stateDir, 'policy', 'disabled')
     return 'd4e5f6'
   })
@@ -189,9 +189,9 @@ test('a removal and a policy change made between two inbound messages stay made'
 
   expect(access(stateDir, 'remove', 'SENDER1').exitCode).toBe(0)
   expect(access(stateDir, 'policy', 'allowlist').exitCode).toBe(0)
-  decide(stateDir, 'STRANGER', Date.now(), () => 'd4e5f6')
+  decide(stateDir, { senderId: 'STRANGER' }, Date.now(), () => 'd4e5f6')
 
-  expect(readAccess(stateDir)).toEqual({ policy: 'allowlist', allowFrom: [], pending: {} })
+  expect(readAccess(stateDir)).toEqual({ policy: 'allowlist', allowFrom: [], groups: {}, pending: {} })
 })
 
 test('a lock left by a process that has ended does not block the access file', () => {
@@ -213,4 +213,60 @@ test('saving the access file leaves no lock or temporary file behind', () => {
 
   expect(readdirSync(stateDir).sort()).toEqual(['access.json', 'approved'])
   expect(JSON.parse(readFileSync(join(stateDir, 'access.json'), 'utf8')).policy).toBe('allowlist')
+})
+
+/** Has SENDER1 paired and GROUP1 registered. */
+function registeredGroup(stateDir: string): void {
+  pairedSender(stateDir)
+  decide(stateDir, { senderId: 'SENDER1', group: { id: 'GROUP1', mentionsBot: true } }, Date.now(), () => 'b2c3d4')
+  takeApproved(stateDir)
+}
+
+test('pair registers a group from its code, and status lists the group with how it is served', () => {
+  const stateDir = newStateDir()
+  registeredGroup(stateDir)
+  expect(access(stateDir, 'status').output).toContain('b2c3d4  Group GROUP1, asked by Sender SENDER1')
+
+  const paired = access(stateDir, 'pair', 'b2c3d4')
+
+  expect(paired.exitCode).toBe(0)
+  expect(paired.output).toContain('Registered Group GROUP1')
+  expect(takeApproved(stateDir)).toEqual(['group:GROUP1'])
+  const status = access(stateDir, 'status').output
+  expect(status).toContain('Groups: 1')
+  expect(status).toContain('GROUP1  answers when mentioned  hears allowed Senders only')
+})
+
+test('group changes how a registered group is served, and removes it', () => {
+  const stateDir = newStateDir()
+  registeredGroup(stateDir)
+  access(stateDir, 'pair', 'b2c3d4')
+
+  expect(access(stateDir, 'group', 'mention', 'GROUP1', 'off').output).toContain('answers every message')
+  expect(access(stateDir, 'group', 'members', 'GROUP1', 'everyone').output).toContain('hears every member')
+  expect(readAccess(stateDir).groups).toEqual({ GROUP1: { requireMention: false, members: 'everyone' } })
+  expect(access(stateDir, 'group', 'mention', 'GROUP1', 'on').exitCode).toBe(0)
+  expect(access(stateDir, 'group', 'members', 'GROUP1', 'allowlist').exitCode).toBe(0)
+  expect(readAccess(stateDir).groups).toEqual({ GROUP1: { requireMention: true, members: 'allowlist' } })
+
+  expect(access(stateDir, 'group', 'remove', 'GROUP1').output).toContain('Group removed')
+  expect(readAccess(stateDir).groups).toEqual({})
+})
+
+test('group refuses a group that is not registered and a value it does not know, changing nothing', () => {
+  const stateDir = newStateDir()
+  registeredGroup(stateDir)
+  access(stateDir, 'pair', 'b2c3d4')
+
+  for (const args of [
+    ['group', 'members', 'GROUP2', 'everyone'],
+    ['group', 'remove', 'GROUP2'],
+    ['group', 'members', 'GROUP1', 'anyone'],
+    ['group', 'mention', 'GROUP1'],
+    ['group', 'open', 'GROUP1'],
+    ['group'],
+  ]) {
+    expect(access(stateDir, ...args).exitCode).toBe(1)
+  }
+  expect(readAccess(stateDir).groups).toEqual({ GROUP1: { requireMention: true, members: 'allowlist' } })
 })

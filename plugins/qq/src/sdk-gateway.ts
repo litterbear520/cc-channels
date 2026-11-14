@@ -5,6 +5,7 @@ import {
   type InboundMessage as SdkInboundMessage,
 } from '@tencent-connect/qqbot-nodejs/protocol'
 import { createAccessTokenSource } from './access-token.ts'
+import { groupIdOf } from './chat-id.ts'
 import type { Credentials } from './credentials.ts'
 import {
   AttachmentTooLargeError,
@@ -45,14 +46,51 @@ export function messageBody(content: OutboundContent): Record<string, unknown> {
 
 const quote = (ref: string | undefined) => (ref ? { message_reference: { message_id: ref } } : {})
 
-/** The Channel's form of a Direct chat message from the SDK, or undefined for any other kind of chat. */
+/** QQ sends this event only for a group message that mentions the bot, with the mention already taken out. */
+const GROUP_MENTION_EVENT = 'GROUP_AT_MESSAGE_CREATE'
+
+/** The path of QQ's API for one chat, to which `/messages` or `/files` is added. */
+const chatPath = (chatId: string) => {
+  const groupId = groupIdOf(chatId)
+  return groupId === undefined ? `/v2/users/${encodeURIComponent(chatId)}` : `/v2/groups/${encodeURIComponent(groupId)}`
+}
+
+/**
+ * A group message's text as a person would read it. When the group lets the
+ * bot receive every message, QQ leaves each mention in the text as `<@ID>`:
+ * the bot's own is taken out, and another member's becomes `@` and their name.
+ */
+function groupText(message: SdkInboundMessage): string {
+  let text = message.content
+  for (const mention of message.mentions ?? []) {
+    const id = mention.member_openid ?? mention.id
+    if (!id) continue
+    const name = mention.username || mention.nickname
+    text = text.replaceAll(`<@${id}>`, mention.is_you ? '' : `@${name || 'someone'}`)
+  }
+  return text.trim()
+}
+
+/** The Channel's form of a Direct chat or Group chat message from the SDK, or undefined for any other kind of chat. */
 export function toInboundMessage(message: SdkInboundMessage): InboundMessage | undefined {
-  // The intent also covers group chats, which the Channel does not serve.
-  if (message.kind !== 'c2c') return undefined
+  // The intent's other scenes, such as a Guild, are not served.
+  if (message.kind !== 'c2c' && message.kind !== 'group') return undefined
+  const inGroup = message.kind === 'group'
+  if (inGroup && !message.groupOpenid) return undefined
   return {
     messageId: message.messageId,
     senderId: message.senderId,
-    text: message.content,
+    ...(inGroup && message.senderName ? { senderName: message.senderName } : {}),
+    ...(inGroup
+      ? {
+          group: {
+            id: message.groupOpenid!,
+            mentionsBot:
+              message.rawEventType === GROUP_MENTION_EVENT || (message.mentions ?? []).some(mention => mention.is_you === true),
+          },
+        }
+      : {}),
+    text: inGroup ? groupText(message) : message.content,
     timestamp: message.timestamp,
     ...(message.msgType === QQ_MESSAGE_TYPE_QUOTE ? { quoted: { text: message.msgElements?.[0]?.content ?? '' } } : {}),
     // QQ sends the index as `msg_idx` in the event's `message_scene.ext`.
@@ -278,9 +316,9 @@ export function createSdkGateway({
       }
     },
 
-    async send(senderId: string, content: OutboundContent, answering?: PassiveReplyTarget): Promise<string> {
+    async send(chatId: string, content: OutboundContent, answering?: PassiveReplyTarget): Promise<string> {
       if (!live) throw new SendRefusedError('not connected to QQ')
-      const sent = (await live.request('POST', `/v2/users/${encodeURIComponent(senderId)}/messages`, {
+      const sent = (await live.request('POST', `${chatPath(chatId)}/messages`, {
         ...messageBody(content),
         ...(answering ? { msg_id: answering.messageId, msg_seq: answering.sequence } : {}),
       })) as { id?: string } | undefined
@@ -297,10 +335,11 @@ export function createSdkGateway({
       })
     },
 
-    async upload(senderId: string, file: OutboundFile): Promise<string> {
+    async upload(chatId: string, file: OutboundFile): Promise<string> {
       if (!live) throw new Error('not connected to QQ')
       // QQ's direct upload: the bytes travel base64-encoded in the request body.
-      const uploaded = (await live.request('POST', `/v2/users/${encodeURIComponent(senderId)}/files`, {
+      // A file uploaded for one chat cannot be sent to another.
+      const uploaded = (await live.request('POST', `${chatPath(chatId)}/files`, {
         file_type: file.kind === 'image' ? QQ_FILE_TYPE_IMAGE : QQ_FILE_TYPE_FILE,
         srv_send_msg: false,
         file_data: Buffer.from(file.data).toString('base64'),

@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { groupChatId, groupIdOf } from './chat-id.ts'
 
 /**
  * Who may reach the session: the allowlist, the access policy, and the Pairing
@@ -18,17 +19,40 @@ export type AccessPolicy = (typeof ACCESS_POLICIES)[number]
 
 export interface PendingPairing {
   senderId: string
+  /** Set when the code is for a Group chat: approving it registers the group, and the Sender is who asked. */
+  groupId?: string
   expiresAt: number
   /** How many times the Sender has been told the code. */
   replies: number
+}
+
+export const GROUP_MEMBERS = ['allowlist', 'everyone'] as const
+/** How one registered Group chat is served. */
+export interface GroupAccess {
+  /** When true, only a message that mentions the bot with an @ reaches the session. */
+  requireMention: boolean
+  /**
+   * - `allowlist`: only Senders on the allowlist are heard in the group.
+   * - `everyone`: any member of the group is heard.
+   */
+  members: (typeof GROUP_MEMBERS)[number]
 }
 
 export interface Access {
   policy: AccessPolicy
   /** Sender IDs that may reach the session. */
   allowFrom: string[]
+  /** The Group chats the bot answers in, keyed by QQ's ID for the group. */
+  groups: Record<string, GroupAccess>
   /** Pairing codes waiting for approval, keyed by code. */
   pending: Record<string, PendingPairing>
+}
+
+/** Where an inbound message comes from. */
+export interface Origin {
+  senderId: string
+  /** Set when it was written in a Group chat. */
+  group?: { id: string; mentionsBot: boolean }
 }
 
 /** What to do with one inbound message. */
@@ -42,8 +66,10 @@ export const PAIRING_CODE_LIFETIME_MS = 60 * 60 * 1000
 const MAX_PENDING_PAIRINGS = 3
 /** The first answer plus one reminder; after that the Sender hears nothing until the code expires. */
 const MAX_REPLIES_PER_PAIRING = 2
-/** A Sender ID becomes a file name in the approved directory, so anything else is refused. */
+/** A Sender ID or group ID becomes a file name in the approved directory, so anything else is refused. */
 const SAFE_SENDER_ID = /^[A-Za-z0-9_-]{1,128}$/
+/** An approved group's marker is named with this in front. No ID contains a dot. */
+const GROUP_MARKER_PREFIX = 'group.'
 
 /**
  * How long a writer waits for another to finish before giving up. Writers hold
@@ -64,7 +90,7 @@ export function readAccess(stateDir: string): Access {
   try {
     raw = readFileSync(accessFile(stateDir), 'utf8')
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { policy: 'pairing', allowFrom: [], pending: {} }
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { policy: 'pairing', allowFrom: [], groups: {}, pending: {} }
     throw error
   }
   // A file that cannot be understood is an error, never the defaults: falling
@@ -75,13 +101,22 @@ export function readAccess(stateDir: string): Access {
   if (!ACCESS_POLICIES.includes(policy)) throw new Error(`access.json has an unknown policy "${policy}"`)
   const pending: Access['pending'] = {}
   for (const [code, pairing] of Object.entries(parsed.pending ?? {})) {
-    const { senderId, expiresAt, replies } = (pairing ?? {}) as Partial<PendingPairing>
+    const { senderId, groupId, expiresAt, replies } = (pairing ?? {}) as Partial<PendingPairing>
     if (typeof senderId !== 'string' || !SAFE_SENDER_ID.test(senderId) || typeof expiresAt !== 'number') continue
-    pending[code] = { senderId, expiresAt, replies: typeof replies === 'number' ? replies : 1 }
+    if (groupId !== undefined && (typeof groupId !== 'string' || !SAFE_SENDER_ID.test(groupId))) continue
+    pending[code] = { senderId, ...(groupId ? { groupId } : {}), expiresAt, replies: typeof replies === 'number' ? replies : 1 }
+  }
+  const groups: Access['groups'] = {}
+  for (const [groupId, group] of Object.entries(parsed.groups ?? {})) {
+    if (!SAFE_SENDER_ID.test(groupId)) continue
+    const { requireMention, members } = (group ?? {}) as Partial<GroupAccess>
+    // Anything unreadable falls back to the narrower setting, never the wider one.
+    groups[groupId] = { requireMention: requireMention !== false, members: members === 'everyone' ? 'everyone' : 'allowlist' }
   }
   return {
     policy,
     allowFrom: Array.isArray(parsed.allowFrom) ? parsed.allowFrom.filter(id => typeof id === 'string') : [],
+    groups,
     pending,
   }
 }
@@ -192,16 +227,35 @@ function updateLocked<Result>(stateDir: string, now: number, change: (access: Ac
 }
 
 /**
- * Decides what happens to a message from this Sender. Under the pairing
- * policy this issues a Pairing code, or counts a reminder, for an unknown one.
+ * Decides what happens to a message. Under the pairing policy this issues a
+ * Pairing code, or counts a reminder, for an unknown Sender in a Direct chat,
+ * and for a Group chat that is not registered.
+ *
+ * In a Group chat nobody but a Sender on the allowlist can get an answer out
+ * of the bot before the group is registered: they must mention the bot, and
+ * the code they are given registers the group once the user approves it.
  */
-export function decide(stateDir: string, senderId: string, now: number, makeCode: () => string): Decision {
+export function decide(stateDir: string, { senderId, group }: Origin, now: number, makeCode: () => string): Decision {
   return update<Decision>(stateDir, now, access => {
     if (access.policy === 'disabled' || !SAFE_SENDER_ID.test(senderId)) return [{ action: 'drop' }, false]
-    if (access.allowFrom.includes(senderId)) return [{ action: 'deliver' }, false]
+    const allowed = access.allowFrom.includes(senderId)
+    if (group) {
+      if (!SAFE_SENDER_ID.test(group.id)) return [{ action: 'drop' }, false]
+      if (Object.hasOwn(access.groups, group.id)) {
+        const { requireMention, members } = access.groups[group.id]!
+        if (requireMention && !group.mentionsBot) return [{ action: 'drop' }, false]
+        if (members === 'allowlist' && !allowed) return [{ action: 'drop' }, false]
+        return [{ action: 'deliver' }, false]
+      }
+      if (!allowed || !group.mentionsBot) return [{ action: 'drop' }, false]
+    } else if (allowed) {
+      return [{ action: 'deliver' }, false]
+    }
     if (access.policy === 'allowlist') return [{ action: 'drop' }, false]
 
-    const waiting = Object.entries(access.pending).find(([, pairing]) => pairing.senderId === senderId)
+    const waiting = Object.entries(access.pending).find(([, pairing]) =>
+      group ? pairing.groupId === group.id : pairing.senderId === senderId && !pairing.groupId,
+    )
     if (waiting) {
       const [code, pairing] = waiting
       if (pairing.replies >= MAX_REPLIES_PER_PAIRING) return [{ action: 'drop' }, false]
@@ -211,39 +265,66 @@ export function decide(stateDir: string, senderId: string, now: number, makeCode
     if (Object.keys(access.pending).length >= MAX_PENDING_PAIRINGS) return [{ action: 'drop' }, false]
 
     const code = makeCode()
-    access.pending[code] = { senderId, expiresAt: now + PAIRING_CODE_LIFETIME_MS, replies: 1 }
+    access.pending[code] = { senderId, ...(group ? { groupId: group.id } : {}), expiresAt: now + PAIRING_CODE_LIFETIME_MS, replies: 1 }
     return [{ action: 'pair', code, reminder: false }, true]
   })
 }
 
 /**
- * True when Claude may write to the Sender or fetch what they sent: they are
- * on the allowlist and the policy is not `disabled`.
+ * True when Claude may write to the chat or fetch what was sent in it, and
+ * the policy is not `disabled`: a Direct chat's Sender is on the allowlist, a
+ * Group chat is registered.
  */
-export function mayReach(stateDir: string, senderId: string): boolean {
+export function mayReach(stateDir: string, chatId: string): boolean {
   const access = readAccess(stateDir)
-  return access.policy !== 'disabled' && access.allowFrom.includes(senderId)
+  if (access.policy === 'disabled') return false
+  const groupId = groupIdOf(chatId)
+  return groupId === undefined ? access.allowFrom.includes(chatId) : Object.hasOwn(access.groups, groupId)
 }
 
 /**
- * Approves a pending Pairing: the Sender joins the allowlist, and a marker is
- * left for the Channel, which sends the confirmation. Returns the Sender ID,
- * or undefined when no Pairing with that code is pending (it may have expired).
+ * Approves a pending Pairing: the Sender joins the allowlist, or the Group
+ * chat is registered, answering only allowlisted Senders who mention the bot.
+ * A marker is left for the Channel, which sends the confirmation. Returns the
+ * chat ID of what was approved, or undefined when no Pairing with that code
+ * is pending (it may have expired).
  */
 export function approvePairing(stateDir: string, code: string, now: number): string | undefined {
-  const senderId = update<string | undefined>(stateDir, now, access => {
+  const approved = update<{ chatId: string; marker: string } | undefined>(stateDir, now, access => {
     // Object.hasOwn: a code such as "constructor" must not find an inherited property.
     if (!Object.hasOwn(access.pending, code)) return [undefined, false]
-    const { senderId } = access.pending[code]!
+    const { senderId, groupId } = access.pending[code]!
     delete access.pending[code]
+    if (groupId) {
+      if (!Object.hasOwn(access.groups, groupId)) access.groups[groupId] = { requireMention: true, members: 'allowlist' }
+      return [{ chatId: groupChatId(groupId), marker: GROUP_MARKER_PREFIX + groupId }, true]
+    }
     if (!access.allowFrom.includes(senderId)) access.allowFrom.push(senderId)
-    return [senderId, true]
+    return [{ chatId: senderId, marker: senderId }, true]
   })
-  if (senderId) {
+  if (approved) {
     mkdirSync(approvedDir(stateDir), { recursive: true, mode: 0o700 })
-    writeFileSync(join(approvedDir(stateDir), senderId), '', { mode: 0o600 })
+    writeFileSync(join(approvedDir(stateDir), approved.marker), '', { mode: 0o600 })
   }
-  return senderId
+  return approved?.chatId
+}
+
+/** Changes how a registered Group chat is served. Returns false when the group is not registered. */
+export function changeGroup(stateDir: string, groupId: string, change: Partial<GroupAccess>, now: number): boolean {
+  return update(stateDir, now, access => {
+    if (!Object.hasOwn(access.groups, groupId)) return [false, false]
+    Object.assign(access.groups[groupId]!, change)
+    return [true, true]
+  })
+}
+
+/** Stops answering in a Group chat. Returns false when the group was not registered. */
+export function removeGroup(stateDir: string, groupId: string, now: number): boolean {
+  return update(stateDir, now, access => {
+    const found = Object.hasOwn(access.groups, groupId)
+    delete access.groups[groupId]
+    return [found, found]
+  })
 }
 
 /** Discards a pending Pairing. Returns false when no Pairing with that code is pending. */
@@ -272,10 +353,10 @@ export function setPolicy(stateDir: string, policy: AccessPolicy, now: number): 
 }
 
 /**
- * Returns the Senders approved since the last call and clears their markers,
- * so that each approval is confirmed once.
+ * Returns the chat IDs of the Senders and Group chats approved since the last
+ * call and clears their markers, so that each approval is confirmed once.
  */
-export function takeApprovedSenders(stateDir: string): string[] {
+export function takeApproved(stateDir: string): string[] {
   let names: string[]
   try {
     names = readdirSync(approvedDir(stateDir))
@@ -283,5 +364,10 @@ export function takeApprovedSenders(stateDir: string): string[] {
     return []
   }
   for (const name of names) rmSync(join(approvedDir(stateDir), name), { force: true })
-  return names.filter(name => SAFE_SENDER_ID.test(name))
+  return names.flatMap(name => {
+    const groupId = name.startsWith(GROUP_MARKER_PREFIX) ? name.slice(GROUP_MARKER_PREFIX.length) : undefined
+    const id = groupId ?? name
+    if (!SAFE_SENDER_ID.test(id)) return []
+    return [groupId === undefined ? id : groupChatId(id)]
+  })
 }

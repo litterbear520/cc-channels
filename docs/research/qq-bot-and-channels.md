@@ -695,6 +695,23 @@ discord 插件里另外两个小功能：
 
 对设计的含义：Claude Code 只在注册了 Channel 的那个会话里投递通知，所以一条消息只会进一个会话，不需要单实例规则。但每个连着 QQ 的插件进程都会各自处理陌生 Sender 的消息，见工单 04 的评论。
 
+### D10. 群聊（2026-11-14）
+
+脚本 `.scratch/qq-channel/spike/group.ts`。一个群，机器人创建者是群主，也是唯一发言的成员；机器人在群里的角色显示为管理员。每项只测了一两次。
+
+- 【实测】默认设置下，群里 @机器人 的消息以 `GROUP_AT_MESSAGE_CREATE` 到达，`content` 已去掉 @，前面留一个空格（如 `" 你好"`）。事件带 `group_openid`、`author.member_openid`、`author.member_role`、`author.username` 和 `author.member_nickname`。
+- 【实测】`author.member_openid` 与同一个人在单聊里的 `user_openid` **相同**。A7 里新旧文档不一致的那个问题，对这个机器人和这个人的答案是"相同"。只有一个人、一个群，是否对其他成员、其他群成立没有测。
+- 【实测】被动回复可用：`POST /v2/groups/{group_openid}/messages` 带 `msg_id` 和 `msg_seq`，纯文本（`msg_type: 0`）和 Markdown（`msg_type: 2`）都被接受，维护者确认 Markdown 在群里正常渲染。5 分钟 5 次的上限没有去触碰。
+- 【实测】主动消息（不带 `msg_id`）默认被拒绝：HTTP 400，`40034105 主动消息失败, 无权限`。群主在手机 QQ 的群设置里允许机器人主动发言之后，同样的请求成功。
+- 【实测】引用：引用机器人的一条消息再 @ 它，事件的 `message_type` 是 `103`，`msg_elements[0].content` 是被引用消息的原文，`message_scene.ext` 里多一项 `ref_msg_idx=`，与单聊相同。
+- 【实测】群主打开"接收全部消息"之后，群里每条消息都以 `GROUP_MESSAGE_CREATE` 到达，包括不 @ 的消息和单独发的图片；@机器人 的消息也改走这个事件，没有再收到 `GROUP_AT_MESSAGE_CREATE`。这时 @ 留在 `content` 里，写成 `<@member_openid>`，事件多一个 `mentions` 数组，机器人自己那一项带 `is_you: true`、`bot: true`。
+- 【实测】群里的图片附件和单聊同形：`attachments[]` 里有 `content_type: image/jpeg`、`filename`、`size`、`width`、`height`、`url`（`multimedia.nt.qq.com.cn`）。
+- 【实测】手机 QQ 不能把 @ 和图片放进同一条消息：选图片会单独发出一条不带 @ 的消息。不开"接收全部消息"时机器人收不到它。
+- 【实测】群事件的 `message_scene.ext` 里还有一项 `auth_token=`，每条消息不同。文档没有说明用途，插件不使用它，脚本输出里已脱敏。
+- 没有测：其他成员（非创建者）的消息、群里下载附件、向群上传并发送图片和文件（`/v2/groups/{group_openid}/files`）、带引用的群回复、5 分钟和 5 次的被动回复上限、机器人被加进或移出群的事件。
+
+对设计的含义：allowlist 可以直接用于群成员，不需要另一套身份；插件要自己判断消息有没有 @ 机器人，不能依赖 QQ 只推送 @ 消息；给群的回答超过被动回复窗口后取决于群主的设置。
+
 ---
 
 ## 未解决的问题

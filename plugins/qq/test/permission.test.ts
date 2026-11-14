@@ -30,7 +30,7 @@ test('a permission request reaches the paired Sender in Chinese, as plain text, 
 
   expect(gateway.sent).toHaveLength(1)
   const prompt = gateway.sent[0]!
-  expect(prompt.senderId).toBe('SENDER1')
+  expect(prompt.chatId).toBe('SENDER1')
   expect(prompt.content.type).toBe('text')
   expect(prompt.text).toContain('Bash')
   expect(prompt.text).toContain('Run the test suite')
@@ -57,8 +57,8 @@ test('the prompt goes through the reply policy and to every paired Sender', asyn
   await askPermission(request)
   await settle()
 
-  expect(gateway.sent.map(message => message.senderId).sort()).toEqual(['SENDER1', 'SENDER2'])
-  const bySender = Object.fromEntries(gateway.sent.map(message => [message.senderId, message.answering]))
+  expect(gateway.sent.map(message => message.chatId).sort()).toEqual(['SENDER1', 'SENDER2'])
+  const bySender = Object.fromEntries(gateway.sent.map(message => [message.chatId, message.answering]))
   expect(bySender.SENDER1).toBeUndefined()
   expect(bySender.SENDER2).toEqual({ messageId: recent.messageId, sequence: 1 })
 })

@@ -37,7 +37,7 @@ test('reply with an image path uploads the image and sends it to the Sender', as
 
   expect(result.isError).toBe(false)
   expect(gateway.uploads).toHaveLength(1)
-  expect(gateway.uploads[0]!.senderId).toBe('SENDER1')
+  expect(gateway.uploads[0]!.chatId).toBe('SENDER1')
   expect(gateway.uploads[0]!.kind).toBe('image')
   expect(new TextDecoder().decode(gateway.uploads[0]!.data)).toBe('png bytes')
   expect(gateway.sent).toHaveLength(1)

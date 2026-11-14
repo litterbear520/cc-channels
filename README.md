@@ -93,10 +93,25 @@ A Pairing code expires after one hour. At most three codes wait for approval at 
 | `/qq:access policy pairing` | Unknown Senders are answered with a Pairing code (the default) |
 | `/qq:access policy allowlist` | Unknown Senders are ignored. Switch to this once you are set up |
 | `/qq:access policy disabled` | Every Sender is ignored, and Claude can neither reply nor download attachments |
+| `/qq:access group mention <GroupID> on\|off` | Whether a registered group is answered only when the bot is mentioned (`on`, the default) or on every message |
+| `/qq:access group members <GroupID> allowlist\|everyone` | Whether a registered group hears only Senders on the allowlist (the default) or every member |
+| `/qq:access group remove <GroupID>` | Stops answering in a group |
 
 Access is changed only from your terminal. The Channel tells Claude never to change it because a QQ message asks.
 
 Anyone on the allowlist can give your Claude Code session instructions, with whatever permissions that session has. Pair only people you would let type into your terminal.
+
+### 7. Use it in a group (optional)
+
+1. Add the bot to a QQ group. QQ lets an unverified bot join only groups where its creator is the owner or an administrator.
+2. In the group, mention the bot with an @ and write anything. You must already be on the allowlist; the bot answers nobody else in a group that is not registered. It answers with a Pairing code for the group.
+3. In your terminal, run `/qq:access pair <code>`. The bot confirms in the group.
+
+A registered group starts narrow: the bot hears only Senders on the allowlist, and only when they mention it. `/qq:access` lists registered groups with their Group IDs, which the `group` commands above take.
+
+- **To be heard without an @**, the group's owner switches on the bot's "receive all messages" setting in QQ, and you run `/qq:access group mention <GroupID> off`. Without the QQ setting, QQ sends the bot only the messages that mention it. With it, an image sent alone reaches the bot too, which matters because mobile QQ cannot put an @ and an image in one message.
+- **`/qq:access group members <GroupID> everyone` lets every member of the group instruct your session**, with whatever permissions it has. Members were not paired one by one, so use it only for a group whose every member you would let type into your terminal.
+- Tool permission prompts are never sent to a group, and an answer written in a group is not taken as one. They stay in the Direct chats of paired Senders.
 
 ## What you can do from QQ
 
@@ -110,8 +125,9 @@ Anyone on the allowlist can give your Claude Code session instructions, with wha
 
 ## Limits
 
-- **Direct chat only.** Group chat and Guild (QQ 频道) are not supported.
-- **No editing, reactions, or history.** QQ offers a bot none of them in a Direct chat. Claude sends a new message to correct an old one, and cannot look up earlier messages.
+- **Direct chat and group chat.** Guild (QQ 频道) is not supported.
+- **Answers to a group must be quick.** QQ documents that a bot may answer a group message with at most 5 Passive replies within 5 minutes. After that the Channel sends a Proactive message, which a group takes only when its owner has allowed the bot to write first; in this project's live test QQ refused it ("主动消息失败, 无权限") until that setting was switched on. So the result of a long task may not reach the group, and Claude is told when it does not. The bot shows no typing status in a group, because QQ has none there.
+- **No editing, reactions, or history.** QQ offers a bot none of them. Claude sends a new message to correct an old one, and cannot look up earlier messages.
 - **Files up to 5 MB.** Larger files are refused; QQ's chunked upload is not implemented.
 - **Passive reply limits.** QQ documents that a bot may answer an inbound message with at most 4 Passive replies within 60 minutes. The Channel follows those limits: within them it sends a Passive reply to your latest message, and beyond them it sends a Proactive message, which QQ lets a recipient switch off. If neither can be delivered, Claude is told why; nothing is queued or retried later. When the connection breaks before QQ answers, the message may or may not have arrived: it is not sent again, and Claude is told so. In this project's live test, with the bot's creator as the only Sender, neither limit took effect (39 Passive replies to one message were accepted, the last after 61 minutes), and Proactive messages were still delivered after the Sender switched them off. Other Senders may be held to the documented limits.
 - **Attachments are fetched only for recent messages.** QQ cannot be asked for a past message, so the Channel remembers the attachment references of recent messages in memory and loses them on a restart.
