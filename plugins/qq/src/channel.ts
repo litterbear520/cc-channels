@@ -59,6 +59,11 @@ const INSTRUCTIONS = [
     'write to a group only shortly after a message there: about five messages within five minutes of it. ' +
     'Send the answer to a group in few messages and without delay. When reply reports that the group did ' +
     'not take a message, say so in your answer to the next message from that person; do not try again.',
+  'A group message with mentioned="true" was addressed to you with an @: answer it. One with ' +
+    'mentioned="false" was written in the group without addressing you, and reaches you because the user ' +
+    'lets you hear the whole group. Most of those are people talking to each other: stay silent and send ' +
+    'nothing, not even an acknowledgement. Answer one only when it asks for something you can do or ' +
+    'answer, or reports a problem in what you are working on, and keep the answer short.',
   'QQ offers a bot no way to edit a message it has sent, to add a reaction, or to look up history, so do ' +
     'not promise or attempt them. To correct something, send a new message. If you need earlier context, ' +
     'ask the person to send it again.',
@@ -449,7 +454,13 @@ export function createChannel({
           message_id: message.messageId,
           sender_id: message.senderId,
           ts: message.timestamp,
-          ...(group ? { chat_type: 'group', ...(message.senderName ? { user: message.senderName } : {}) } : {}),
+          ...(group
+            ? {
+                chat_type: 'group',
+                mentioned: String(group.mentionsBot),
+                ...(message.senderName ? { user: message.senderName } : {}),
+              }
+            : {}),
           ...(message.attachments.length > 0 ? describeAttachments(message.attachments) : {}),
           ...(message.quoted ? { quoting: 'true' } : {}),
         },

@@ -109,7 +109,7 @@ Anyone on the allowlist can give your Claude Code session instructions, with wha
 
 A registered group starts narrow: the bot hears only Senders on the allowlist, and only when they mention it. `/qq:access` lists registered groups with their Group IDs, which the `group` commands above take.
 
-- **To be heard without an @**, the group's owner switches on the bot's "receive all messages" setting in QQ, and you run `/qq:access group mention <GroupID> off`. Without the QQ setting, QQ sends the bot only the messages that mention it. With it, an image sent alone reaches the bot too, which matters because mobile QQ cannot put an @ and an image in one message.
+- **To be heard without an @**, the group's owner switches on the bot's "receive all messages" setting in QQ, and you run `/qq:access group mention <GroupID> off`. Without the QQ setting, QQ sends the bot only the messages that mention it. Claude is told which messages mention the bot: it answers those, and stays silent on the rest unless one asks for something it can do. With the QQ setting on, an image sent alone reaches the bot too, which matters because mobile QQ cannot put an @ and an image in one message.
 - **`/qq:access group members <GroupID> everyone` lets every member of the group instruct your session**, with whatever permissions it has. Members were not paired one by one, so use it only for a group whose every member you would let type into your terminal.
 - Tool permission prompts are never sent to a group, and an answer written in a group is not taken as one. They stay in the Direct chats of paired Senders.
 

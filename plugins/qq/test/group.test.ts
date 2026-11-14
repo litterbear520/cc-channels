@@ -109,6 +109,7 @@ test("in a registered group an allowlisted Sender's mention arrives marked as a 
         sender_id: 'SENDER1',
         ts: message.timestamp,
         chat_type: 'group',
+        mentioned: 'true',
         user: 'name of SENDER1',
       },
     },
@@ -144,6 +145,8 @@ test('a group set to hear everyone delivers any member, and one set to need no m
   gateway.receive(groupMessageFrom('MEMBER2', 'GROUP1', 'just talking', false))
   await settle()
   expect(events.map(event => event.content)).toEqual(['from a member', 'just talking'])
+  // Claude is told which messages were addressed to it, so that it can leave the others unanswered.
+  expect(events.map(event => event.meta!.mentioned)).toEqual(['true', 'false'])
 
   expect(changeGroup(stateDir, 'GROUP2', { members: 'everyone' }, clock.now)).toBe(false)
 })
