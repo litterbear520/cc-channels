@@ -2,6 +2,8 @@
 
 [简体中文](README.zh-CN.md)
 
+[![test](https://github.com/litterbear520/cc-channels/actions/workflows/test.yml/badge.svg)](https://github.com/litterbear520/cc-channels/actions/workflows/test.yml) [![licence](https://img.shields.io/badge/licence-Apache--2.0-blue)](LICENSE)
+
 A Claude Code plugin marketplace that connects instant-messaging Platforms to a running Claude Code session, one plugin per Platform.
 
 Each plugin contains one Channel: a local MCP server that pushes the Platform's messages into your session and lets Claude answer there. The Channel dials out from your machine, so you need no public URL, tunnel, or server.
@@ -70,7 +72,7 @@ bun test
 bun run typecheck
 ```
 
-The tests run without an account on the Platform: the connection sits behind one interface, and a fake stands in for it. The real connection is checked by hand with [docs/release-checklist.md](docs/release-checklist.md). Terms used in the code and documents are defined in [GLOSSARY.md](GLOSSARY.md).
+The tests run without an account on the Platform: the connection sits behind one interface, and a fake stands in for it. The real connection is checked by hand with [docs/release-checklist.md](docs/release-checklist.md). Terms used in the code and documents are defined in [GLOSSARY.md](GLOSSARY.md). See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request, and [SECURITY.md](SECURITY.md) to report a vulnerability.
 
 ## Licence
 

@@ -2,6 +2,8 @@
 
 [English](README.md)
 
+[![test](https://github.com/litterbear520/cc-channels/actions/workflows/test.yml/badge.svg)](https://github.com/litterbear520/cc-channels/actions/workflows/test.yml) [![licence](https://img.shields.io/badge/licence-Apache--2.0-blue)](LICENSE)
+
 一个 Claude Code 插件 marketplace：把即时通讯 Platform 接到正在运行的 Claude Code 会话上，每个 Platform 一个插件。
 
 每个插件包含一个 Channel：一个本地 MCP server，把 Platform 上的消息推进你的会话，并让 Claude 在那边作答。Channel 由本机主动向外连接，不需要公网地址、隧道或服务器。
@@ -70,7 +72,7 @@ bun test
 bun run typecheck
 ```
 
-测试不需要 Platform 的账号：与 Platform 的连接放在一个接口后面，测试时用假的实现代替。真实连接按 [docs/release-checklist.md](docs/release-checklist.md) 手工检查。代码和文档里的术语定义在 [GLOSSARY.md](GLOSSARY.md)。
+测试不需要 Platform 的账号：与 Platform 的连接放在一个接口后面，测试时用假的实现代替。真实连接按 [docs/release-checklist.md](docs/release-checklist.md) 手工检查。代码和文档里的术语定义在 [GLOSSARY.md](GLOSSARY.md)。提交 pull request 前请看 [CONTRIBUTING.md](CONTRIBUTING.md)，报告安全问题见 [SECURITY.md](SECURITY.md)。
 
 ## 许可证
 
