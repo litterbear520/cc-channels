@@ -44,6 +44,12 @@ export interface QQGateway {
    */
   upload(chatId: string, file: OutboundFile): Promise<string>
   /**
+   * Takes back a message the bot sent to a chat, so that it disappears for
+   * everyone. QQ allows it only for a short while after the message was sent.
+   * Rejects when QQ does not take the message back.
+   */
+  recall(chatId: string, messageId: string): Promise<void>
+  /**
    * Fetches an inbound attachment's bytes. Rejects with
    * {@link AttachmentTooLargeError} as soon as more than `maxBytes` arrive,
    * without reading the rest, and rejects when QQ no longer serves the URL.

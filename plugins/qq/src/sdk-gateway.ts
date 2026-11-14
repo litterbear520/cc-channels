@@ -371,6 +371,11 @@ export function createSdkGateway({
       return uploaded.file_info
     },
 
+    async recall(chatId: string, messageId: string): Promise<void> {
+      if (!live) throw new Error('not connected to QQ')
+      await live.request('DELETE', `${chatPath(chatId)}/messages/${encodeURIComponent(messageId)}`, undefined)
+    },
+
     async download(url: string, maxBytes: number): Promise<Uint8Array> {
       // QQ serves attachment URLs without an Authorization header, so the access token is not sent.
       if (new URL(url).protocol !== 'https:') throw new Error('the attachment is not at an https address')

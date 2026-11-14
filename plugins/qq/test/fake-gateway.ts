@@ -103,6 +103,16 @@ export class FakeQQGateway implements QQGateway {
     return `file-info-${this.uploads.length}`
   }
 
+  /** The messages the Channel took back, in order. */
+  recalled: { chatId: string; messageId: string }[] = []
+  /** Set to make QQ refuse every recall. */
+  refuseRecall: Error | undefined
+
+  async recall(chatId: string, messageId: string): Promise<void> {
+    if (this.refuseRecall) throw this.refuseRecall
+    this.recalled.push({ chatId, messageId })
+  }
+
   async showTyping(senderId: string, messageId: string): Promise<void> {
     if (this.refuseTyping) throw this.refuseTyping
     this.typing.push({ senderId, messageId })
