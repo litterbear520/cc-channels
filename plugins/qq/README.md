@@ -100,6 +100,26 @@ Inbound Direct chat messages trigger a typing status automatically. QQ has none 
 
 QQ offers a bot no way to edit a message, add a reaction, or look up history, so there are no tools for those.
 
+## What Claude sees
+
+A message from a paired Sender arrives in the session as a `<channel>` event:
+
+```
+<channel source="qq" chat_id="…" message_id="…" sender_id="…" ts="2026-11-11T09:00:00+08:00">
+run the tests and tell me what failed
+</channel>
+```
+
+One from a group also says who wrote it and whether the bot was mentioned:
+
+```
+<channel source="qq" chat_id="group:…" message_id="…" sender_id="…" ts="…" chat_type="group" mentioned="true" user="Alice">
+what broke the build?
+</channel>
+```
+
+A message with images or files carries `attachment_count` and `attachments`; one that quotes an earlier message carries `quoting="true"` and begins with the quoted text as a block quote. Claude answers by passing the tag's `chat_id` to `reply`.
+
 ## Attachments
 
 Attachments are **not** auto-downloaded. The `<channel>` notification lists each attachment's name, type, and size — the assistant calls `download_attachment(chat_id, message_id)` when it actually wants the file. Downloads land in `~/.claude/channels/qq/inbox/`. A download stops at 25 MB or after two minutes.

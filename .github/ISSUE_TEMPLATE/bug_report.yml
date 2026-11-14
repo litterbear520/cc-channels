@@ -1,0 +1,54 @@
+name: Bug report
+description: Something a plugin does wrong, or does not do
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        English or Chinese are both fine. 中文、英文都可以。
+
+        Leave out AppSecrets, access tokens, and real Sender or Group IDs. For a vulnerability, do not open an issue: see SECURITY.md.
+  - type: dropdown
+    id: plugin
+    attributes:
+      label: Plugin
+      options:
+        - qq
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: The output of `claude --version` and `bun --version`, your operating system, and how you started Claude Code.
+      placeholder: |
+        Claude Code 2.1.322
+        Bun 1.4.3
+        macOS 15
+        claude --dangerously-load-development-channels plugin:qq@cc-channels
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where it happened
+      options:
+        - Direct chat
+        - Group chat
+        - Setup or pairing
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Anything the session reported, or lines beginning `qq channel:` from the server's log. Starting with `QQ_CHANNEL_TRACE=1` adds connection events.
+      render: text

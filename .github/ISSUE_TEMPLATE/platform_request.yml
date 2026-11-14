@@ -1,0 +1,30 @@
+name: Platform request
+description: Ask for a Channel plugin for another messaging Platform
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A plugin here uses only the Platform's own documented bot API. The links below decide whether one can be built.
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+    validations:
+      required: true
+  - type: textarea
+    id: docs
+    attributes:
+      label: Official bot documentation
+      description: Links to the Platform's own documentation for bots.
+    validations:
+      required: true
+  - type: textarea
+    id: receiving
+    attributes:
+      label: How a bot receives messages
+      description: Is there a way that needs no public URL, such as a WebSocket or long polling? Who may message a bot, and in which kinds of chat?
+  - type: textarea
+    id: use
+    attributes:
+      label: How you would use it

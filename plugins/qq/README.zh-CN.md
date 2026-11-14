@@ -100,6 +100,26 @@ Direct chat 里收到消息后会自动显示"输入中"。QQ 群里没有这个
 
 QQ 不向机器人提供编辑消息、表情回应和查历史的接口，所以没有对应的工具。
 
+## Claude 看到的样子
+
+已配对 Sender 发来的消息，以 `<channel>` 事件的形式进入会话：
+
+```
+<channel source="qq" chat_id="…" message_id="…" sender_id="…" ts="2026-11-11T09:00:00+08:00">
+跑一下测试，告诉我哪些挂了
+</channel>
+```
+
+群里来的消息还会带上是谁写的、有没有 @机器人：
+
+```
+<channel source="qq" chat_id="group:…" message_id="…" sender_id="…" ts="…" chat_type="group" mentioned="true" user="小明">
+构建是被什么弄坏的？
+</channel>
+```
+
+带图片或文件的消息有 `attachment_count` 和 `attachments`；引用了之前消息的，带 `quoting="true"`，正文开头是以引用块形式出现的被引用文字。Claude 把标签里的 `chat_id` 传给 `reply` 来作答。
+
 ## 附件
 
 附件**不会**自动下载。`<channel>` 通知里列出每个附件的名字、类型和大小，Claude 真要用的时候才调用 `download_attachment(chat_id, message_id)`。文件落在 `~/.claude/channels/qq/inbox/`。下载到 25 MB 或超过两分钟就停止。

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a vulnerability
+    url: https://github.com/litterbear520/cc-channels/security/advisories/new
+    about: Privately, please. See SECURITY.md for what is in scope.
+  - name: Claude Code Channels documentation
+    url: https://code.claude.com/docs/en/channels
+    about: How Channels work, and the settings that allow them in an organisation.

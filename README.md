@@ -16,11 +16,30 @@ Each plugin contains one Channel: a local MCP server that pushes the Platform's 
 >
 > A Channel hands messages from outside to an agent that has your machine's permissions. Read a plugin's access documentation before you let anyone but yourself reach it.
 
+## How it works
+
+```
+ your phone                         your machine
+┌──────────┐   Platform's    ┌────────────────────────────────────────┐
+│ QQ chat  │◄───bot API─────►│ Channel (MCP server) ◄─stdio─► Claude  │
+└──────────┘                 │  access gate · reply tools      Code   │
+                             └────────────────────────────────────────┘
+```
+
+1. You write to your bot. The Channel, already connected to the Platform, receives the message.
+2. The Channel checks who wrote it. Only a Sender you have paired gets through, unless you opened a group to all its members; anyone else gets a Pairing code, or nothing.
+3. The message appears in your session as a `<channel>` event. Claude works on it with the tools and permissions that session has.
+4. Claude answers with the Channel's `reply` tool, and the answer appears in the chat. A tool call that needs your approval can be approved from the chat too.
+
+Nothing runs in the cloud: the Channel lives and dies with the Claude Code session that started it.
+
 ## Plugins
 
 | Plugin | Platform | What it does | Docs |
 | --- | --- | --- | --- |
 | [`qq`](plugins/qq) | QQ, through the official QQ Bot API | Direct chats and groups: text, images and files both ways, quoting, recall, and tool permission prompts answered from QQ | [README](plugins/qq/README.md) · [Access](plugins/qq/ACCESS.md) |
+
+More Platforms are being looked at. Whether one can be built on its official bot API is written up before any code: see [WeChat](docs/research/wechat-bot-and-channels.md) and [WeCom](docs/research/wecom-bot-and-channels.md), both in Chinese and neither tried against a real account yet. To ask for another, open a [Platform request](https://github.com/litterbear520/cc-channels/issues/new?template=platform_request.yml).
 
 ## Installation
 
@@ -53,7 +72,8 @@ cc-channels/
 ├── docs/
 │   ├── adr/                 # Architecture decisions
 │   ├── research/            # What was checked against the real Platform
-│   └── release-checklist.md
+│   ├── release-checklist.md
+│   └── README.md            # What each document is
 └── GLOSSARY.md              # The terms used in code and documents
 ```
 
