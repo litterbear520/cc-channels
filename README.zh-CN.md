@@ -22,10 +22,10 @@
 
 ## 安装
 
-在 Claude Code 里添加这个 marketplace（填克隆下来的本地路径，或仓库的 Git 地址），再从中安装插件：
+在 Claude Code 里添加这个 marketplace，再从中安装插件：
 
 ```
-/plugin marketplace add /path/to/cc-channels
+/plugin marketplace add litterbear520/cc-channels
 /plugin install qq@cc-channels
 ```
 

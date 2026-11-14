@@ -35,10 +35,10 @@ IP 白名单留空，除非你确定本机出口地址。
 
 下面是 Claude Code 命令，先运行 `claude` 进入会话。
 
-添加 marketplace（填克隆下来的本地路径，或仓库的 Git 地址），再安装插件：
+添加 marketplace，再安装插件：
 
 ```
-/plugin marketplace add /path/to/cc-channels
+/plugin marketplace add litterbear520/cc-channels
 /plugin install qq@cc-channels
 ```
 

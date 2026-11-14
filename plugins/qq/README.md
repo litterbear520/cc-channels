@@ -35,10 +35,10 @@ Both are on the same 开发设置 page. Hold onto them for step 4.
 
 These are Claude Code commands — run `claude` to start a session first.
 
-Add the marketplace, by the path of a clone or by the repository's Git URL, then install the plugin:
+Add the marketplace, then install the plugin:
 
 ```
-/plugin marketplace add /path/to/cc-channels
+/plugin marketplace add litterbear520/cc-channels
 /plugin install qq@cc-channels
 ```
 

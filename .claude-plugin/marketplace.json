@@ -10,6 +10,7 @@
       "name": "qq",
       "description": "QQ channel for Claude Code. Talk to a running session from a QQ direct chat or group, through the official QQ Bot API.",
       "category": "productivity",
+      "homepage": "https://github.com/litterbear520/cc-channels/tree/main/plugins/qq",
       "source": "./plugins/qq"
     }
   ]

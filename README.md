@@ -22,10 +22,10 @@ Each plugin contains one Channel: a local MCP server that pushes the Platform's 
 
 ## Installation
 
-In Claude Code, add this marketplace by the path of a clone or by the repository's Git URL, then install a plugin from it:
+In Claude Code, add this marketplace, then install a plugin from it:
 
 ```
-/plugin marketplace add /path/to/cc-channels
+/plugin marketplace add litterbear520/cc-channels
 /plugin install qq@cc-channels
 ```
 

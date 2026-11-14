@@ -1,2 +1,3 @@
 node_modules/
-.scratch/qq-channel/spike/out/
+# Working notes, specs and live-test scripts. Kept locally, not published.
+.scratch/

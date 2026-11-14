@@ -2,6 +2,12 @@
   "name": "qq",
   "description": "QQ channel for Claude Code — talk to a running session from a QQ direct chat or group, through the official QQ Bot API.",
   "version": "0.0.1",
+  "author": {
+    "name": "huangsitao",
+    "url": "https://github.com/litterbear520"
+  },
+  "homepage": "https://github.com/litterbear520/cc-channels/tree/main/plugins/qq",
+  "repository": "https://github.com/litterbear520/cc-channels",
   "license": "Apache-2.0",
   "keywords": [
     "qq",
