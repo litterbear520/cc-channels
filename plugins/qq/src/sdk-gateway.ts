@@ -74,15 +74,18 @@ function groupText(message: SdkInboundMessage): string {
 /**
  * QQ writes one of its own emoji into a message's text as
  * `<faceType=1,faceId="264",ext="...">`, where `ext` is base64 for JSON such
- * as `{"text":"捂脸"}`. Each becomes its name in brackets, `[捂脸]`, or
- * `[表情]` when QQ gives no name that can be read.
+ * as `{"text":"捂脸"}`, or `{"text":"[牛逼]"}` for a sticker. Each becomes
+ * its name in brackets, `[捂脸]`, or `[表情]` when QQ gives no name that can
+ * be read.
  */
 export function readableFaces(text: string): string {
   return text.replace(/<faceType=\d+,faceId="[^"]*",ext="([^"]*)">/g, (_face, ext: string) => {
     try {
-      const name = (JSON.parse(Buffer.from(ext, 'base64').toString('utf8')) as { text?: unknown }).text
-      // The name is the Sender's to choose in some clients, so only a short plain one is shown.
-      if (typeof name === 'string' && /^[^\[\]<>\n]{1,20}$/.test(name)) return `[${name}]`
+      const text = (JSON.parse(Buffer.from(ext, 'base64').toString('utf8')) as { text?: unknown }).text
+      // A sticker's name comes with brackets of its own.
+      const name = typeof text === 'string' ? text.replace(/^\[(.*)\]$/, '$1') : ''
+      // The name may be the Sender's to choose, so only a short plain one is shown.
+      if (/^[^\[\]<>\n]{1,20}$/.test(name)) return `[${name}]`
     } catch {
       // Falls through to the nameless form.
     }

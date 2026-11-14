@@ -247,6 +247,8 @@ test("QQ's own emoji in a message's text are shown by name", () => {
 
   expect(readableFaces(face)).toBe('[捂脸]')
   expect(readableFaces(`好的${face}${face} 谢谢`)).toBe('好的[捂脸][捂脸] 谢谢')
+  // A sticker, whose name QQ sends already in brackets.
+  expect(readableFaces('<faceType=6,faceId="0",ext="eyJ0ZXh0IjoiW+eJm+mAvF0ifQ==">')).toBe('[牛逼]')
   expect(readableFaces('<faceType=3,faceId="1",ext="not base64 json">')).toBe('[表情]')
   expect(readableFaces('<faceType=1,faceId="2",ext="">')).toBe('[表情]')
   expect(readableFaces('a < b and c > d')).toBe('a < b and c > d')
