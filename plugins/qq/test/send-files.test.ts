@@ -46,6 +46,14 @@ test('reply with an image path uploads the image and sends it to the Sender', as
   expect(result.text).toContain('sent-1')
 })
 
+test('a GIF is uploaded as an image, whatever the case of its extension', async () => {
+  const { gateway, callTool, fileNamed } = await startWithFiles()
+
+  await callTool('reply', { chat_id: 'SENDER1', text: '', files: [fileNamed('wave.gif'), fileNamed('LOUD.GIF')] })
+
+  expect(gateway.uploads.map(upload => upload.kind)).toEqual(['image', 'image'])
+})
+
 test('reply with another kind of file sends it as a file under its own name', async () => {
   const { gateway, callTool, fileNamed } = await startWithFiles()
   const report = fileNamed('report.pdf')

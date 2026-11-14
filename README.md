@@ -120,7 +120,7 @@ A registered group starts narrow: the bot hears only Senders on the allowlist, a
 - **Quote an earlier message.** Claude sees the quoted text along with what you wrote.
 - **See that your message arrived.** The bot shows as typing for a while after a message reaches Claude.
 - **Read Claude's answers.** Claude answers through the Channel's `reply` tool. Text is sent as Markdown, and text over 2000 characters is split into several messages. Claude can show an answer as quoting one of your recent messages.
-- **Receive images and files** of up to 5 MB each.
+- **Receive images and files** of up to 5 MB each. A PNG, JPEG or GIF is shown in the conversation, a GIF animated; anything else arrives as a file.
 - **Answer tool permission prompts.** When Claude Code needs approval for a tool call, the prompt is sent to every paired Sender. Answer `yes <id>` or `no <id>` (or `y` / `n`) with the ID shown in the prompt. The terminal prompt keeps working, and whichever answer comes first wins. A bare "yes" is never taken as an approval. The bot confirms that it received your answer.
 
 ## Limits

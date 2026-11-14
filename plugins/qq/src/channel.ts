@@ -113,7 +113,7 @@ const TOOLS = [
           items: { type: 'string' },
           description:
             'Absolute paths of local files to send after the text, each as a message of its own. At most 5 MB ' +
-            'each. A .png, .jpg or .jpeg is shown as an image; anything else arrives as a file.',
+            'each. A .png, .jpg, .jpeg or .gif is shown as an image, a GIF animated; anything else arrives as a file.',
         },
       },
       required: ['chat_id', 'text'],

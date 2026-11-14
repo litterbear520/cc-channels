@@ -6,8 +6,12 @@ import { inboxDir } from './inbox.ts'
 /** The most QQ's direct upload takes. Larger files need its chunked upload, which is not built. */
 export const MAX_FILE_BYTES = 5 * 1024 * 1024
 const MAX_FILES_PER_REPLY = 10
-/** The formats QQ's upload documentation lists for an image. Anything else is sent as a file. */
-const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg'])
+/**
+ * What is uploaded as an image: the formats QQ's upload documentation lists,
+ * and GIF, which the live check found QQ shows animated. Anything else is sent
+ * as a file.
+ */
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif'])
 
 /**
  * Reads the local files a reply is to carry. Throws, naming the file, when one
