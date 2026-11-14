@@ -71,6 +71,25 @@ function groupText(message: SdkInboundMessage): string {
   return text.trim()
 }
 
+/**
+ * QQ writes one of its own emoji into a message's text as
+ * `<faceType=1,faceId="264",ext="...">`, where `ext` is base64 for JSON such
+ * as `{"text":"捂脸"}`. Each becomes its name in brackets, `[捂脸]`, or
+ * `[表情]` when QQ gives no name that can be read.
+ */
+export function readableFaces(text: string): string {
+  return text.replace(/<faceType=\d+,faceId="[^"]*",ext="([^"]*)">/g, (_face, ext: string) => {
+    try {
+      const name = (JSON.parse(Buffer.from(ext, 'base64').toString('utf8')) as { text?: unknown }).text
+      // The name is the Sender's to choose in some clients, so only a short plain one is shown.
+      if (typeof name === 'string' && /^[^\[\]<>\n]{1,20}$/.test(name)) return `[${name}]`
+    } catch {
+      // Falls through to the nameless form.
+    }
+    return '[表情]'
+  })
+}
+
 /** The Channel's form of a Direct chat or Group chat message from the SDK, or undefined for any other kind of chat. */
 export function toInboundMessage(message: SdkInboundMessage): InboundMessage | undefined {
   // The intent's other scenes, such as a Guild, are not served.
@@ -90,7 +109,7 @@ export function toInboundMessage(message: SdkInboundMessage): InboundMessage | u
           },
         }
       : {}),
-    text: inGroup ? groupText(message) : message.content,
+    text: readableFaces(inGroup ? groupText(message) : message.content),
     timestamp: message.timestamp,
     ...(message.msgType === QQ_MESSAGE_TYPE_QUOTE ? { quoted: { text: message.msgElements?.[0]?.content ?? '' } } : {}),
     // QQ sends the index as `msg_idx` in the event's `message_scene.ext`.

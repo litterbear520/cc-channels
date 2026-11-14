@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'bun:test'
 import { ApiError, type InboundMessage as SdkInboundMessage } from '@tencent-connect/qqbot-nodejs/protocol'
 import { AttachmentTooLargeError, SendRefusedError } from '../src/gateway.ts'
-import { createSdkGateway, messageBody, refusedByQQ, toInboundMessage } from '../src/sdk-gateway.ts'
+import { createSdkGateway, messageBody, readableFaces, refusedByQQ, toInboundMessage } from '../src/sdk-gateway.ts'
 
 /*
  * The parts of the real gateway that need no bot: what is sent, how inbound
@@ -239,6 +239,18 @@ test('in a group that sends every message, the mention list tells whether the bo
     event({ ...everyMessage, content: '<@MEMBER2> hi', mentions: [{ id: 'MEMBER2', username: '小红', is_you: false }] }),
   )
   expect(someoneElse?.group?.mentionsBot).toBe(false)
+})
+
+test("QQ's own emoji in a message's text are shown by name", () => {
+  // The form seen in the live check, for the emoji QQ calls 捂脸.
+  const face = '<faceType=1,faceId="264",ext="eyJ0ZXh0Ijoi5o2C6IS4In0=">'
+
+  expect(readableFaces(face)).toBe('[捂脸]')
+  expect(readableFaces(`好的${face}${face} 谢谢`)).toBe('好的[捂脸][捂脸] 谢谢')
+  expect(readableFaces('<faceType=3,faceId="1",ext="not base64 json">')).toBe('[表情]')
+  expect(readableFaces('<faceType=1,faceId="2",ext="">')).toBe('[表情]')
+  expect(readableFaces('a < b and c > d')).toBe('a < b and c > d')
+  expect(toInboundMessage(event({ content: face }))?.text).toBe('[捂脸]')
 })
 
 test('a group event without a group ID is left out', () => {
