@@ -2,141 +2,64 @@
 
 [简体中文](README.zh-CN.md)
 
-A Claude Code plugin marketplace that connects instant-messaging Platforms to a running Claude Code session, one plugin per Platform. Each plugin contains one Channel: an MCP server that pushes the Platform's messages into your session and lets Claude answer there.
+A Claude Code plugin marketplace that connects instant-messaging Platforms to a running Claude Code session, one plugin per Platform.
 
-The first plugin is `qq`. It uses only the official QQ Bot API. You send your bot a message in a QQ Direct chat, and it reaches the Claude Code session on your own machine; Claude's answers, images, files, and tool permission prompts come back into the same Direct chat. The Channel dials out to QQ over WebSocket, so you need no public URL, tunnel, or server.
+Each plugin contains one Channel: a local MCP server that pushes the Platform's messages into your session and lets Claude answer there. The Channel dials out from your machine, so you need no public URL, tunnel, or server.
 
-> **You must start Claude Code with a development flag.**
+> **⚠️ You must start Claude Code with a development flag.** Channels are a research preview, and Claude Code loads only the Channel plugins on Anthropic's allowlist. These plugins are not on that list. Start Claude Code as each plugin's README shows, for example:
 >
 > ```bash
 > claude --dangerously-load-development-channels plugin:qq@cc-channels
 > ```
 >
-> Channels are a research preview, and Claude Code loads only the Channel plugins on Anthropic's allowlist. This project is not on that list, so a normal start loads the plugin's skills but does not register its Channel, and no QQ message arrives. The flag skips the allowlist for this one plugin. It works **in interactive sessions only**: with `-p` or through the Agent SDK, Claude Code ignores it. At startup Claude Code asks you to confirm that you are loading a development Channel.
+> A Channel hands messages from outside to an agent that has your machine's permissions. Read a plugin's access documentation before you let anyone but yourself reach it.
 
-## Requirements
+## Plugins
 
-- Claude Code, signed in with claude.ai or a Console API key. Channels are not available through Amazon Bedrock, Google Cloud, or Microsoft Foundry. Tested with Claude Code 2.1.322.
-- [Bun](https://bun.sh). The Channel runs on it. Tested with Bun 1.4.3.
-- A QQ account, to create a bot on the QQ open platform.
+| Plugin | Platform | What it does | Docs |
+| --- | --- | --- | --- |
+| [`qq`](plugins/qq) | QQ, through the official QQ Bot API | Direct chats and groups: text, images and files both ways, quoting, recall, and tool permission prompts answered from QQ | [README](plugins/qq/README.md) · [Access](plugins/qq/ACCESS.md) |
 
-## Set up the `qq` plugin
+## Installation
 
-### 1. Create a QQ bot
-
-1. Sign in to the [QQ open platform](https://q.qq.com) and create a bot (机器人).
-2. Open the bot's 开发设置 page and note its **AppID** and **AppSecret**.
-3. Under 事件订阅与回调地址, choose **WebSocket** as the way events are delivered. If the console lists events to subscribe to, include the Direct chat message event (单聊消息, `C2C_MESSAGE_CREATE`).
-4. Leave the IP allowlist (IP 白名单) empty unless you know the address your machine connects from.
-
-An unverified individual account is enough: the bot's creator can open a Direct chat with their own bot with no further step. QQ limits who else can message a bot owned by an individual; see QQ's own documentation for the current rules.
-
-### 2. Add the marketplace and install the plugin
-
-Clone this repository, then, in Claude Code:
+In Claude Code, add this marketplace by the path of a clone or by the repository's Git URL, then install a plugin from it:
 
 ```
 /plugin marketplace add /path/to/cc-channels
 /plugin install qq@cc-channels
 ```
 
-`/plugin marketplace add` also accepts the Git URL of wherever the repository is hosted.
+Then follow the plugin's own README for its credentials and Pairing.
 
-The plugin installs its dependencies from its lockfile the first time it starts. It ships no registry configuration of its own, so the install follows yours. If you need a mirror, set it in your own Bun or npm configuration, for example in `~/.bunfig.toml`:
-
-```toml
-[install]
-registry = "https://registry.npmmirror.com"
-```
-
-See [Bun's documentation on registries](https://bun.sh/docs/install/registries).
-
-### 3. Store the credentials
+## Structure
 
 ```
-/qq:configure <AppID> <AppSecret>
+cc-channels/
+├── .claude-plugin/
+│   └── marketplace.json     # The marketplace: one entry per plugin
+├── plugins/
+│   └── qq/
+│       ├── .claude-plugin/
+│       │   └── plugin.json  # Plugin metadata
+│       ├── .mcp.json        # Starts the Channel
+│       ├── server.ts        # The Channel's entry point
+│       ├── src/             # The Channel, one module per concern
+│       ├── skills/          # /qq:configure and /qq:access
+│       ├── test/
+│       ├── README.md
+│       └── ACCESS.md
+├── docs/
+│   ├── adr/                 # Architecture decisions
+│   ├── research/            # What was checked against the real Platform
+│   └── release-checklist.md
+└── GLOSSARY.md              # The terms used in code and documents
 ```
 
-They are written to `~/.claude/channels/qq/.env`, readable by your account only. `/qq:configure` with no arguments shows whether credentials are set, without printing the AppSecret; `/qq:configure clear` removes them.
-
-### 4. Start Claude Code with the Channel
-
-```bash
-claude --dangerously-load-development-channels plugin:qq@cc-channels
-```
-
-The Channel connects to QQ when the session starts, refreshes its access token, and reconnects by itself after a network drop. If credentials are missing or QQ rejects them, the session is told so and the Channel stays loaded, so that `/qq:configure` still works. The Channel reads the credentials only at startup: restart Claude Code after changing them.
-
-Messages arrive only while that session is open. To stay reachable, keep it running in a persistent terminal.
-
-### 5. Pair
-
-1. In QQ, send your bot any message in a Direct chat. It answers with a Pairing code.
-2. In the Claude Code terminal, approve it:
-
-   ```
-   /qq:access pair <code>
-   ```
-
-3. The bot confirms in the Direct chat. From now on your messages reach the session.
-
-A Pairing code expires after one hour. At most three codes wait for approval at a time, and a Sender who already has one is reminded of it once instead of getting a new one.
-
-### 6. Manage access
-
-| Command | What it does |
-| --- | --- |
-| `/qq:access` | Shows the access policy, the Senders on the allowlist, and pending Pairing codes |
-| `/qq:access pair <code>` | Approves a Pairing |
-| `/qq:access deny <code>` | Discards a pending Pairing |
-| `/qq:access remove <SenderID>` | Takes a Sender off the allowlist |
-| `/qq:access policy pairing` | Unknown Senders are answered with a Pairing code (the default) |
-| `/qq:access policy allowlist` | Unknown Senders are ignored. Switch to this once you are set up |
-| `/qq:access policy disabled` | Every Sender is ignored, and Claude can neither reply nor download attachments |
-| `/qq:access group mention <GroupID> on\|off` | Whether a registered group is heard only when the bot is mentioned (`on`, the default) or on every message; Claude decides which of those to answer |
-| `/qq:access group members <GroupID> allowlist\|everyone` | Whether a registered group hears only Senders on the allowlist (the default) or every member |
-| `/qq:access group remove <GroupID>` | Stops answering in a group |
-
-Access is changed only from your terminal. The Channel tells Claude never to change it because a QQ message asks.
-
-Anyone on the allowlist can give your Claude Code session instructions, with whatever permissions that session has. Pair only people you would let type into your terminal.
-
-### 7. Use it in a group (optional)
-
-1. Add the bot to a QQ group. QQ lets an unverified bot join only groups where its creator is the owner or an administrator.
-2. In the group, mention the bot with an @ and write anything. You must already be on the allowlist; the bot answers nobody else in a group that is not registered. It answers with a Pairing code for the group, under the `allowlist` policy too.
-3. In your terminal, run `/qq:access pair <code>`. The bot confirms in the group.
-
-A registered group starts narrow: the bot hears only Senders on the allowlist, and only when they mention it. `/qq:access` lists registered groups with their Group IDs, which the `group` commands above take.
-
-- **To be heard without an @**, the group's owner switches on the bot's "receive all messages" setting in QQ, and you run `/qq:access group mention <GroupID> off`. Without the QQ setting, QQ sends the bot only the messages that mention it. Claude is told which messages mention the bot: it answers those, and stays silent on the rest unless one asks for something it can do. With the QQ setting on, an image sent alone reaches the bot too, which matters because mobile QQ cannot put an @ and an image in one message.
-- **`/qq:access group members <GroupID> everyone` lets every member of the group instruct your session**, with whatever permissions it has. Members were not paired one by one, so use it only for a group whose every member you would let type into your terminal.
-- Tool permission prompts are never sent to a group, and an answer written in a group is not taken as one. They stay in the Direct chats of paired Senders.
-
-## What you can do from QQ
-
-- **Send text.** It arrives in the session tagged with your Sender ID, the message ID, and the time.
-- **Send an image or a file.** Claude sees that the message carries attachments and downloads them on demand into `~/.claude/channels/qq/inbox/`. A download stops as soon as an attachment passes 25 MB, so no more than that is fetched, and one that takes over two minutes is abandoned.
-- **Quote an earlier message.** Claude sees the quoted text along with what you wrote.
-- **See that your message arrived.** The bot shows as typing for a while after a message reaches Claude.
-- **Read Claude's answers.** Claude answers through the Channel's `reply` tool. Text is sent as Markdown, and text over 2000 characters is split into several messages. Claude can show an answer as quoting one of your recent messages.
-- **Receive images and files** of up to 5 MB each. A PNG, JPEG or GIF is shown in the conversation, a GIF animated; anything else arrives as a file.
-- **Have Claude take a message back.** Within two minutes of sending it, Claude can recall a message it sent, and it disappears from the conversation. QQ allows no longer, and only messages sent since the Channel last started can be taken back.
-- **Answer tool permission prompts.** When Claude Code needs approval for a tool call, the prompt is sent to every paired Sender. Answer `yes <id>` or `no <id>` (or `y` / `n`) with the ID shown in the prompt. The terminal prompt keeps working, and whichever answer comes first wins. A bare "yes" is never taken as an approval. The bot confirms that it received your answer.
-
-## Limits
-
-- **Direct chat and group chat.** Guild (QQ 频道) is not supported.
-- **Answers to a group must be quick.** QQ documents that a bot may answer a group message with at most 5 Passive replies within 5 minutes. After that the Channel sends a Proactive message, which a group takes only when its owner has allowed the bot to write first; in this project's live test QQ refused it ("主动消息失败, 无权限") until that setting was switched on. So the result of a long task may not reach the group, and Claude is told when it does not. The bot shows no typing status in a group, because QQ has none there.
-- **No editing, reactions, or history.** QQ offers a bot none of them. Claude sends a new message to correct an old one, or takes the old one back within two minutes, and cannot look up earlier messages.
-- **Files up to 5 MB.** Larger files are refused; QQ's chunked upload is not implemented.
-- **Passive reply limits.** QQ documents that a bot may answer an inbound message with at most 4 Passive replies within 60 minutes. The Channel follows those limits: within them it sends a Passive reply to your latest message, and beyond them it sends a Proactive message, which QQ lets a recipient switch off. If neither can be delivered, Claude is told why; nothing is queued or retried later. When the connection breaks before QQ answers, the message may or may not have arrived: it is not sent again, and Claude is told so. In this project's live test, with the bot's creator as the only Sender, neither limit took effect (39 Passive replies to one message were accepted, the last after 61 minutes), and Proactive messages were still delivered after the Sender switched them off. Other Senders may be held to the documented limits.
-- **Attachments are fetched only for recent messages.** QQ cannot be asked for a past message, so the Channel remembers the attachment references of recent messages in memory and loses them on a restart.
-- **One long-lived session is the intended setup.** QQ delivers each message to every connection of a bot. Only the session started with the flag receives messages, but if several Claude Code sessions of one account have the plugin enabled, an unknown Sender can be answered more than once.
+Plugins share no code: each one stands alone and can be installed, versioned, and removed by itself. See [ADR 0001](docs/adr/0001-one-plugin-per-platform.md).
 
 ## Team and Enterprise
 
-Channels are off by default for Team and Enterprise organisations. An Owner turns them on with the `channelsEnabled` managed setting. An admin can also name this plugin, `qq` from the `cc-channels` marketplace, in the organisation's `allowedChannelPlugins` setting, which lets members start it with `--channels plugin:qq@cc-channels` instead of the development flag. That setting replaces Anthropic's default list rather than adding to it, so list every Channel plugin the organisation wants, and it approves `qq` without approving any other Platform. The development flag skips only the allowlist: `channelsEnabled` still applies. See [Claude Code's Channels documentation](https://code.claude.com/docs/en/channels) for the settings' exact format.
+Channels are off by default for Team and Enterprise organisations. An Owner turns them on with the `channelsEnabled` managed setting. An admin can also name a plugin of this marketplace in the organisation's `allowedChannelPlugins` setting, which lets members start it with `--channels plugin:qq@cc-channels` instead of the development flag. That setting replaces Anthropic's default list rather than adding to it, so list every Channel plugin the organisation wants. The development flag skips only the allowlist: `channelsEnabled` still applies. See [Claude Code's Channels documentation](https://code.claude.com/docs/en/channels) for the settings' exact format.
 
 ## Development
 
@@ -147,7 +70,7 @@ bun test
 bun run typecheck
 ```
 
-The tests run without a QQ account: the QQ connection sits behind one interface, and a fake stands in for it. The real connection is checked by hand with [docs/release-checklist.md](docs/release-checklist.md). Terms used in the code and documents are defined in [GLOSSARY.md](GLOSSARY.md).
+The tests run without an account on the Platform: the connection sits behind one interface, and a fake stands in for it. The real connection is checked by hand with [docs/release-checklist.md](docs/release-checklist.md). Terms used in the code and documents are defined in [GLOSSARY.md](GLOSSARY.md).
 
 ## Licence
 
