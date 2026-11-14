@@ -234,7 +234,7 @@ test('pair registers a group from its code, and status lists the group with how 
   expect(takeApproved(stateDir)).toEqual(['group:GROUP1'])
   const status = access(stateDir, 'status').output
   expect(status).toContain('Groups: 1')
-  expect(status).toContain('GROUP1  answers when mentioned  hears allowed Senders only')
+  expect(status).toContain('GROUP1  hears mentions only  hears allowed Senders only')
 })
 
 test('group changes how a registered group is served, and removes it', () => {
@@ -242,7 +242,7 @@ test('group changes how a registered group is served, and removes it', () => {
   registeredGroup(stateDir)
   access(stateDir, 'pair', 'b2c3d4')
 
-  expect(access(stateDir, 'group', 'mention', 'GROUP1', 'off').output).toContain('answers every message')
+  expect(access(stateDir, 'group', 'mention', 'GROUP1', 'off').output).toContain('hears every message')
   expect(access(stateDir, 'group', 'members', 'GROUP1', 'everyone').output).toContain('hears every member')
   expect(readAccess(stateDir).groups).toEqual({ GROUP1: { requireMention: false, members: 'everyone' } })
   expect(access(stateDir, 'group', 'mention', 'GROUP1', 'on').exitCode).toBe(0)

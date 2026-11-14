@@ -93,7 +93,7 @@ A Pairing code expires after one hour. At most three codes wait for approval at 
 | `/qq:access policy pairing` | Unknown Senders are answered with a Pairing code (the default) |
 | `/qq:access policy allowlist` | Unknown Senders are ignored. Switch to this once you are set up |
 | `/qq:access policy disabled` | Every Sender is ignored, and Claude can neither reply nor download attachments |
-| `/qq:access group mention <GroupID> on\|off` | Whether a registered group is answered only when the bot is mentioned (`on`, the default) or on every message |
+| `/qq:access group mention <GroupID> on\|off` | Whether a registered group is heard only when the bot is mentioned (`on`, the default) or on every message; Claude decides which of those to answer |
 | `/qq:access group members <GroupID> allowlist\|everyone` | Whether a registered group hears only Senders on the allowlist (the default) or every member |
 | `/qq:access group remove <GroupID>` | Stops answering in a group |
 
@@ -104,7 +104,7 @@ Anyone on the allowlist can give your Claude Code session instructions, with wha
 ### 7. Use it in a group (optional)
 
 1. Add the bot to a QQ group. QQ lets an unverified bot join only groups where its creator is the owner or an administrator.
-2. In the group, mention the bot with an @ and write anything. You must already be on the allowlist; the bot answers nobody else in a group that is not registered. It answers with a Pairing code for the group.
+2. In the group, mention the bot with an @ and write anything. You must already be on the allowlist; the bot answers nobody else in a group that is not registered. It answers with a Pairing code for the group, under the `allowlist` policy too.
 3. In your terminal, run `/qq:access pair <code>`. The bot confirms in the group.
 
 A registered group starts narrow: the bot hears only Senders on the allowlist, and only when they mention it. `/qq:access` lists registered groups with their Group IDs, which the `group` commands above take.

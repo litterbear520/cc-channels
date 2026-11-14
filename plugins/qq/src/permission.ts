@@ -60,7 +60,10 @@ const MAX_PREVIEW_LENGTH = 600
 export function permissionPrompt(request: PermissionRequest): string {
   const lines = ['Claude 请求使用工具，需要你批准：', '', `工具：${shortened(request.tool_name, MAX_TOOL_NAME_LENGTH)}`]
   if (request.description) lines.push(`说明：${shortened(request.description, MAX_DESCRIPTION_LENGTH)}`)
-  if (request.input_preview) lines.push(`参数：${shortened(request.input_preview, MAX_PREVIEW_LENGTH)}`)
+  if (request.input_preview) {
+    lines.push(`参数：${bothEnds(request.input_preview, MAX_PREVIEW_LENGTH)}`)
+    if (request.input_preview.length > MAX_PREVIEW_LENGTH) lines.push('参数太长，中间一段没有显示。拿不准时到终端查看完整内容再回答。')
+  }
   lines.push(
     '',
     `回复 yes ${request.request_id} 允许，回复 no ${request.request_id} 拒绝。也可以在终端里回答，先到的为准。`,
@@ -69,3 +72,14 @@ export function permissionPrompt(request: PermissionRequest): string {
 }
 
 const shortened = (text: string, limit: number) => (text.length > limit ? `${text.slice(0, limit)}…` : text)
+
+/**
+ * Cuts a long text out of its middle. What a command does last is as much a
+ * reason to refuse it as what it does first, so the end must reach the Sender.
+ */
+function bothEnds(text: string, limit: number): string {
+  if (text.length <= limit) return text
+  const tail = Math.floor(limit / 3)
+  const head = limit - tail
+  return `${text.slice(0, head)} …（省略 ${text.length - limit} 个字符）… ${text.slice(-tail)}`
+}

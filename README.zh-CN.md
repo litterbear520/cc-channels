@@ -93,7 +93,7 @@ Pairing 码一小时后过期。同时最多有三个码等待批准；已经有
 | `/qq:access policy pairing` | 陌生 Sender 会收到 Pairing 码（默认） |
 | `/qq:access policy allowlist` | 忽略陌生 Sender。配置完成后建议切到这个策略 |
 | `/qq:access policy disabled` | 忽略所有 Sender，Claude 也不能回复或下载附件 |
-| `/qq:access group mention <GroupID> on\|off` | 已登记的群是只在 @机器人 时响应（`on`，默认），还是响应每条消息 |
+| `/qq:access group mention <GroupID> on\|off` | 已登记的群是只在 @机器人 时才被听到（`on`，默认），还是每条消息都被听到；听到后是否回答由 Claude 判断 |
 | `/qq:access group members <GroupID> allowlist\|everyone` | 已登记的群是只听 allowlist 上的 Sender（默认），还是听所有群成员 |
 | `/qq:access group remove <GroupID>` | 不再响应某个群 |
 
@@ -104,7 +104,7 @@ allowlist 上的任何人都能向你的 Claude Code 会话下指令，权限与
 ### 7. 在群里使用（可选）
 
 1. 把机器人加进一个 QQ 群。未认证的机器人只能加入创建者是群主或管理员的群。
-2. 在群里 @机器人 并随便写点什么。你必须已经在 allowlist 上；在未登记的群里，机器人不回应其他任何人。它会回一个这个群的 Pairing 码。
+2. 在群里 @机器人 并随便写点什么。你必须已经在 allowlist 上；在未登记的群里，机器人不回应其他任何人。它会回一个这个群的 Pairing 码，`allowlist` 策略下也一样。
 3. 在终端里运行 `/qq:access pair <code>`。机器人会在群里确认。
 
 刚登记的群范围很窄：机器人只听 allowlist 上的 Sender，而且只在被 @ 时响应。`/qq:access` 会列出已登记的群和它们的 Group ID，上面的 `group` 命令要用到这个 ID。

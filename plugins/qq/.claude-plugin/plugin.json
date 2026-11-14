@@ -1,6 +1,6 @@
 {
   "name": "qq",
-  "description": "QQ channel for Claude Code — talk to a running session from a QQ direct chat, through the official QQ Bot API.",
+  "description": "QQ channel for Claude Code — talk to a running session from a QQ direct chat or group, through the official QQ Bot API.",
   "version": "0.0.1",
   "license": "Apache-2.0",
   "keywords": [

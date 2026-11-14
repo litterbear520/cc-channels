@@ -227,9 +227,9 @@ function updateLocked<Result>(stateDir: string, now: number, change: (access: Ac
 }
 
 /**
- * Decides what happens to a message. Under the pairing policy this issues a
- * Pairing code, or counts a reminder, for an unknown Sender in a Direct chat,
- * and for a Group chat that is not registered.
+ * Decides what happens to a message. This issues a Pairing code, or counts a
+ * reminder, for an unknown Sender in a Direct chat under the pairing policy,
+ * and for a Group chat that is not registered under any policy but `disabled`.
  *
  * In a Group chat nobody but a Sender on the allowlist can get an answer out
  * of the bot before the group is registered: they must mention the bot, and
@@ -251,7 +251,9 @@ export function decide(stateDir: string, { senderId, group }: Origin, now: numbe
     } else if (allowed) {
       return [{ action: 'deliver' }, false]
     }
-    if (access.policy === 'allowlist') return [{ action: 'drop' }, false]
+    // `allowlist` turns away unknown Senders. A group is asked for by a Sender
+    // already on the allowlist, so it can still be registered.
+    if (!group && access.policy === 'allowlist') return [{ action: 'drop' }, false]
 
     const waiting = Object.entries(access.pending).find(([, pairing]) =>
       group ? pairing.groupId === group.id : pairing.senderId === senderId && !pairing.groupId,

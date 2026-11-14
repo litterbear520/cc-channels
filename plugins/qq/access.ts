@@ -48,7 +48,7 @@ function printStatus(): void {
   console.log(`Groups: ${groups.length}`)
   for (const [groupId, group] of groups) {
     const heard = group.members === 'everyone' ? 'every member' : 'allowed Senders only'
-    console.log(`  ${groupId}  ${group.requireMention ? 'answers when mentioned' : 'answers every message'}  hears ${heard}`)
+    console.log(`  ${groupId}  ${group.requireMention ? 'hears mentions only' : 'hears every message'}  hears ${heard}`)
   }
   const pending = Object.entries(access.pending).filter(([, pairing]) => pairing.expiresAt > now)
   console.log(`Pending Pairings: ${pending.length}`)
@@ -82,7 +82,7 @@ function changeGroupFromArguments(): void {
   if (!changeGroup(stateDir, groupId, change, now)) fail(notRegistered)
   const group = readAccess(stateDir).groups[groupId]!
   console.log(
-    `Group ${groupId}: ${group.requireMention ? 'answers when mentioned' : 'answers every message'}, ` +
+    `Group ${groupId}: ${group.requireMention ? 'hears mentions only' : 'hears every message'}, ` +
       `hears ${group.members === 'everyone' ? 'every member' : 'allowed Senders only'}.`,
   )
 }

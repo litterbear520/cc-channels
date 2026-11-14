@@ -63,10 +63,12 @@ treated as coming from an unknown Sender.
 
 ### `group mention <GroupID> <on|off>`
 
-Run it and confirm. `on` (the default) answers in the group only when the bot
-is mentioned with an @. `off` answers every message, which also needs the
-group's owner to switch on the bot's "receive all messages" setting in QQ;
-without it QQ sends the bot only the messages that mention it. Say so.
+Run it and confirm. `on` (the default) hears only the messages that mention
+the bot with an @. `off` hears every message: each one reaches this session,
+and Claude answers those that mention the bot or ask for something it can do,
+staying silent on the rest. `off` also needs the group's owner to switch on
+the bot's "receive all messages" setting in QQ; without it QQ sends the bot
+only the messages that mention it. Say so.
 
 ### `group members <GroupID> <allowlist|everyone>`
 
@@ -91,7 +93,7 @@ Run `access.ts policy <mode>` and confirm. The modes:
 - `pairing` (default): an unknown Sender who messages the bot is answered with a
   Pairing code.
 - `allowlist`: unknown Senders get no answer; only Senders already paired get
-  through.
+  through. A paired Sender can still register a group.
 - `disabled`: nobody gets through and nobody is answered.
 
 ---

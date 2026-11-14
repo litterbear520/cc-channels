@@ -74,6 +74,27 @@ test('a very long description or preview is cut short so that the prompt stays o
   expect(gateway.sent[0]!.text).toContain('yes abcde')
 })
 
+test('a long preview keeps its beginning and its end, and says the middle is missing', async () => {
+  const { gateway, askPermission } = await startWithPairedSender('SENDER1')
+  const command = `echo START ${'x'.repeat(3000)}; rm -rf TAIL_MARKER`
+
+  await askPermission({ ...request, input_preview: JSON.stringify({ command }) })
+  await settle()
+
+  const prompt = gateway.sent[0]!.text!
+  expect(prompt).toContain('echo START')
+  expect(prompt).toContain('rm -rf TAIL_MARKER')
+  expect(prompt).toContain('到终端查看完整内容')
+  expect(prompt.length).toBeLessThan(2000)
+})
+
+test('a short preview is shown whole, with no note about missing text', async () => {
+  const { gateway } = await startWithPrompt()
+
+  expect(gateway.sent[0]!.text).toContain('参数：{"command":"bun test"}')
+  expect(gateway.sent[0]!.text).not.toContain('到终端查看')
+})
+
 for (const [answer, behavior] of [
   ['yes abcde', 'allow'],
   ['y abcde', 'allow'],

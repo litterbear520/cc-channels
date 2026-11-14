@@ -69,6 +69,25 @@ Run the session without bypassing permissions, so that a tool call asks for appr
 - [ ] 25. `/qq:access policy allowlist`, then message the bot from a Sender who is not paired (or after `/qq:access remove`): no reply at all.
 - [ ] 26. `/qq:access policy disabled`: a paired Sender's message is neither delivered nor answered. Set the policy back afterwards.
 
+### Group chat
+
+Needs a QQ group the bot can join, and for steps 30 and 31 a second member who is not on the allowlist. `docs/research/qq-bot-and-channels.md`, section D10, records what was seen in a real group so far.
+
+- [ ] 27. In a group that is not registered, a paired Sender mentions the bot and is answered with one Pairing code. `/qq:access pair <code>` registers the group, and the bot confirms in the group.
+- [ ] 28. A mention from the paired Sender appears in the session with `chat_type="group"` and `mentioned="true"`, and Claude's answer appears in the group.
+- [ ] 29. A message without a mention is not delivered. After the group's owner switches on "receive all messages" in QQ and `/qq:access group mention <GroupID> off`, it is delivered with `mentioned="false"`, and Claude stays silent on small talk.
+- [ ] 30. A member who is not on the allowlist mentions the bot: nothing is delivered and nothing is answered.
+- [ ] 31. After `/qq:access group members <GroupID> everyone`, that member's message is delivered. Set it back to `allowlist` afterwards.
+- [ ] 32. Trigger a permission prompt from the group. It arrives in the Direct chat only, and `yes <id>` written in the group approves nothing.
+- [ ] 33. Send an image and a file in the group; Claude downloads and reads them. Ask for an image and a file back; they display in the group.
+
+### Recall, GIF and QQ emoji
+
+- [ ] 34. Ask Claude to take back the message it just sent. It disappears from the chat in the QQ client. Check a Direct chat and a group.
+- [ ] 35. Ask again for a message older than two minutes. Claude reports that it is too late, and the message stays.
+- [ ] 36. Ask Claude to send a `.gif` from disk. It plays as an animation. Check a Direct chat and a group.
+- [ ] 37. Send a QQ emoji and a sticker. Each reaches the session as its name in brackets, such as `[捂脸]`.
+
 ## Record of runs
 
 ### 2026-11-11, partial
@@ -102,3 +121,16 @@ After the session was restarted with the code for quoting, typing status, and qu
 | Typing status | A message sent from QQ showed the typing status in the Direct chat. |
 | Quoted inbound message | A message quoting an earlier one reached Claude with the quoted text. |
 | `reply_to` | An answer that quoted the Sender's message displayed as a quote in the QQ client. |
+
+### 2026-11-14, partial, Group chat
+
+One group, in which the only member writing was the bot's creator, who owns the group. Steps 27 to 37 were added to this checklist after these checks, so they were run as the features were built and not in one pass.
+
+| Steps | Outcome |
+| --- | --- |
+| 27, 28 | Passed in a real session. |
+| 29 | Delivery without a mention passed once "receive all messages" was on. Staying silent on small talk was not checked on purpose. |
+| 33 | Passed: an image and a file from the group were downloaded and read, and an image and a file were sent back. |
+| 34 | QQ accepted the recall of a group message from a script. The `recall` tool, a Direct chat, and the message disappearing in the client are not confirmed. |
+| 36 | A `.gif` sent to the group played as an animation. Not checked in a Direct chat. |
+| 30 to 32, 35, 37 | Not run. Covered by the automated tests only. |

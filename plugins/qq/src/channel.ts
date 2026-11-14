@@ -161,6 +161,18 @@ const TOOLS = [
 const verdictTakenText = (verdict: Verdict) =>
   `已收到你的回答：${verdict.behavior === 'allow' ? '允许' : '拒绝'}（${verdict.requestId}）。`
 
+const MAX_DISPLAY_NAME_LENGTH = 40
+
+/**
+ * A group member's name as it goes into the event's `user` attribute. The
+ * name is the Sender's to choose, so what could end the attribute or the tag
+ * is taken out; `sender_id` is what tells people apart.
+ */
+function displayName(name: string | undefined): string {
+  const plain = (name ?? '').replace(/[<>"'&\p{Cc}]/gu, '').trim()
+  return [...plain].slice(0, MAX_DISPLAY_NAME_LENGTH).join('')
+}
+
 const MAX_QUOTED_LENGTH = 500
 /**
  * The message a Sender quoted, as a Markdown block quote to go in front of
@@ -516,7 +528,7 @@ export function createChannel({
             ? {
                 chat_type: 'group',
                 mentioned: String(group.mentionsBot),
-                ...(message.senderName ? { user: message.senderName } : {}),
+                ...(displayName(message.senderName) ? { user: displayName(message.senderName) } : {}),
               }
             : {}),
           ...(message.attachments.length > 0 ? describeAttachments(message.attachments) : {}),

@@ -115,7 +115,7 @@ export type OutboundContent =
 /**
  * QQ's index for showing a message as quoted by another. It is not the message
  * ID: QQ hands it out with each inbound message, and a message sent with one
- * in `quoting` is displayed in the Direct chat as an answer to that message.
+ * in `quoting` is displayed in the chat as an answer to that message.
  */
 export type QuoteRef = string
 
