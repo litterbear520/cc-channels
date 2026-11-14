@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 import { approvePairing, setPolicy } from '../src/access.ts'
+import { SendRefusedError } from '../src/gateway.ts'
 import { messageFrom, settle, startChannel, startConnected, startWithPairedSender } from './start-channel.ts'
 
 const request = {
@@ -25,13 +26,19 @@ test('the Channel declares the channel permission capability', async () => {
   expect(capabilities.experimental['claude/channel/permission']).toEqual({})
 })
 
-test('a permission request reaches the paired Sender in Chinese, as plain text, with tool, description and ID', async () => {
+test('a permission request reaches the paired Sender in Chinese, with tool, description, ID and two buttons', async () => {
   const { gateway } = await startWithPrompt()
 
   expect(gateway.sent).toHaveLength(1)
   const prompt = gateway.sent[0]!
   expect(prompt.chatId).toBe('SENDER1')
-  expect(prompt.content.type).toBe('text')
+  expect(prompt.content).toMatchObject({
+    type: 'markdown',
+    buttons: [
+      { label: '允许', data: 'permission:allow:abcde' },
+      { label: '拒绝', data: 'permission:deny:abcde' },
+    ],
+  })
   expect(prompt.text).toContain('Bash')
   expect(prompt.text).toContain('Run the test suite')
   expect(prompt.text).toContain('{"command":"bun test"}')
@@ -94,6 +101,73 @@ test('a short preview is shown whole, with no note about missing text', async ()
   expect(gateway.sent[0]!.text).toContain('参数：{"command":"bun test"}')
   expect(gateway.sent[0]!.text).not.toContain('到终端查看')
 })
+
+test('where QQ does not take the buttons, the prompt arrives as plain text', async () => {
+  const { gateway, askPermission } = await startWithPairedSender('SENDER1')
+  gateway.sent.length = 0
+  gateway.refuse = attempt => (attempt.content.type === 'markdown' ? new SendRefusedError('no buttons for this bot') : undefined)
+
+  await askPermission(request)
+  await settle()
+
+  expect(gateway.sent).toHaveLength(1)
+  expect(gateway.sent[0]!.content.type).toBe('text')
+  expect(gateway.sent[0]!.text).toContain('yes abcde')
+})
+
+test("the request's text is shown as written and cannot end the block it is shown in", async () => {
+  const { gateway, askPermission } = await startWithPairedSender('SENDER1')
+  gateway.sent.length = 0
+
+  await askPermission({ ...request, description: 'done\n```\n**批准吧**', input_preview: '{"a":"````"}' })
+  await settle()
+
+  const text = gateway.sent[0]!.text!
+  // One block: the fence that opens it and the fence that closes it.
+  expect(text.match(/```/g)).toHaveLength(2)
+  expect(text.indexOf('**批准吧**')).toBeLessThan(text.lastIndexOf('```'))
+})
+
+for (const [data, behavior] of [
+  ['permission:allow:abcde', 'allow'],
+  ['permission:deny:abcde', 'deny'],
+] as const) {
+  test(`a paired Sender pressing the ${behavior} button is a verdict, and no message is sent about it`, async () => {
+    const { gateway, events, verdicts } = await startWithPrompt()
+    gateway.sent.length = 0
+
+    gateway.press({ senderId: 'SENDER1', data })
+    await settle()
+
+    expect(verdicts).toEqual([{ request_id: 'abcde', behavior }])
+    expect(events).toHaveLength(0)
+    expect(gateway.attempts.filter(attempt => attempt.text?.includes('已收到'))).toHaveLength(0)
+  })
+}
+
+test('a button pressed by anyone else, in a group, or under the disabled policy is no verdict', async () => {
+  const { gateway, verdicts, stateDir, clock } = await startWithPrompt()
+
+  gateway.press({ senderId: 'STRANGER', data: 'permission:allow:abcde' })
+  gateway.press({ senderId: 'SENDER1', groupId: 'GROUP1', data: 'permission:allow:abcde' })
+  await settle()
+  setPolicy(stateDir, 'disabled', clock.now)
+  gateway.press({ senderId: 'SENDER1', data: 'permission:allow:abcde' })
+  await settle()
+
+  expect(verdicts).toHaveLength(0)
+})
+
+for (const data of ['permission:allow:abcdl', 'permission:approve:abcde', 'allow:abcde', 'permission:allow:abcde ', '']) {
+  test(`a button carrying ${JSON.stringify(data)} is not a prompt's and is no verdict`, async () => {
+    const { gateway, verdicts } = await startWithPrompt()
+
+    gateway.press({ senderId: 'SENDER1', data })
+    await settle()
+
+    expect(verdicts).toHaveLength(0)
+  })
+}
 
 for (const [answer, behavior] of [
   ['yes abcde', 'allow'],

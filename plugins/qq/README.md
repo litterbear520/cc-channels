@@ -130,7 +130,7 @@ Outbound, a `.png`, `.jpg`, `.jpeg` or `.gif` is shown as an image, a GIF animat
 
 ## Permission prompts
 
-When Claude Code needs approval for a tool call, the prompt is also sent to the Direct chat of every paired Sender. Answer `yes <id>` or `no <id>` (or `y` / `n`) with the ID shown in the prompt. The terminal prompt keeps working, and whichever answer comes first wins. A bare "yes" approves nothing. Prompts are never sent to a group, and an answer written in a group is not taken as one.
+When Claude Code needs approval for a tool call, the prompt is also sent to the Direct chat of every paired Sender, with an 允许 (allow) and a 拒绝 (deny) button under it. Press one, or answer `yes <id>` or `no <id>` (or `y` / `n`) with the ID shown in the prompt. Where QQ does not take the buttons, the prompt arrives as plain text and the written answer still works. The terminal prompt keeps working, and whichever answer comes first wins. A bare "yes" approves nothing. Prompts are never sent to a group, and neither an answer written in a group nor a button pressed there is taken as one. QQ cannot edit a message, so the buttons stay under a prompt that has been answered; pressing one then does nothing.
 
 ## Limits
 

@@ -62,7 +62,22 @@ export interface QQGateway {
 export interface GatewayEvents {
   /** A message arrived in a Direct chat or a Group chat. QQ may deliver the same message more than once. */
   onMessage(message: InboundMessage): void
+  /**
+   * Someone pressed a button of a message the bot sent. The gateway has
+   * already told QQ that the press was received.
+   */
+  onButton(press: ButtonPress): void
   onLost(error: Error): void
+}
+
+/** One press of a button, in a Direct chat or a Group chat. */
+export interface ButtonPress {
+  /** QQ's ID for whoever pressed. The live test found it equal to their Sender ID in both kinds of chat. */
+  senderId: string
+  /** Set when the button was pressed in a Group chat. */
+  groupId?: string
+  /** The `data` the button was sent with. */
+  data: string
 }
 
 /** A message a Sender wrote to the bot in a Direct chat, or wrote in a Group chat the bot is in. */
@@ -108,9 +123,23 @@ export interface InboundAttachment {
 /** What one outbound message carries. QQ renders `markdown` and shows `text` as written. */
 export type OutboundContent =
   | { type: 'text'; text: string; quoting?: QuoteRef }
-  | { type: 'markdown'; text: string; quoting?: QuoteRef }
+  | { type: 'markdown'; text: string; quoting?: QuoteRef; buttons?: Button[] }
   /** A file uploaded earlier with `upload`, named by the reference QQ returned for it. */
   | { type: 'media'; fileInfo: string }
+
+/**
+ * A button under a Markdown message. Pressing it sends nothing to the chat:
+ * the press comes back through {@link GatewayEvents.onButton} with `data`.
+ * Anyone who can see the message can press it.
+ */
+export interface Button {
+  label: string
+  /** What the button reads once it has been pressed. */
+  pressedLabel: string
+  data: string
+  /** Shown highlighted. */
+  primary?: boolean
+}
 
 /**
  * QQ's index for showing a message as quoted by another. It is not the message

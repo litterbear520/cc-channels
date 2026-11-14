@@ -2,6 +2,7 @@ import {
   ApiClient,
   ApiError,
   GatewayConnection,
+  type InteractionEvent,
   type InboundMessage as SdkInboundMessage,
 } from '@tencent-connect/qqbot-nodejs/protocol'
 import { createAccessTokenSource } from './access-token.ts'
@@ -11,6 +12,8 @@ import {
   AttachmentTooLargeError,
   CredentialsRejectedError,
   SendRefusedError,
+  type Button,
+  type ButtonPress,
   type GatewayEvents,
   type InboundMessage,
   type OutboundContent,
@@ -22,6 +25,10 @@ import {
 const USER_AGENT = 'claude-channel-qq/0.0.1'
 /** The group-and-direct-chat event group. Subscribing to it needs no approval from QQ. */
 const GROUP_AND_DIRECT_CHAT_INTENT = 1 << 25
+/** Button presses. Subscribing to it needs no approval from QQ either. */
+const INTERACTION_INTENT = 1 << 26
+/** The `type` of the interaction event QQ sends for a pressed message button. */
+const QQ_INTERACTION_BUTTON = 11
 
 /** The `message_type` of an inbound message that quotes another; the quoted one comes in `msg_elements`. */
 const QQ_MESSAGE_TYPE_QUOTE = 103
@@ -38,13 +45,42 @@ export function messageBody(content: OutboundContent): Record<string, unknown> {
     case 'text':
       return { msg_type: 0, content: content.text, ...quote(content.quoting) }
     case 'markdown':
-      return { msg_type: 2, markdown: { content: content.text }, ...quote(content.quoting) }
+      return {
+        msg_type: 2,
+        markdown: { content: content.text },
+        ...quote(content.quoting),
+        ...(content.buttons?.length ? { keyboard: keyboard(content.buttons) } : {}),
+      }
     case 'media':
       return { msg_type: 7, media: { file_info: content.fileInfo } }
   }
 }
 
 const quote = (ref: string | undefined) => (ref ? { message_reference: { message_id: ref } } : {})
+
+/** QQ's form of one row of callback buttons that anyone in the chat may press. */
+const keyboard = (buttons: Button[]) => ({
+  content: {
+    rows: [
+      {
+        buttons: buttons.map((button, index) => ({
+          id: String(index + 1),
+          render_data: { label: button.label, visited_label: button.pressedLabel, style: button.primary ? 1 : 0 },
+          action: { type: 1, permission: { type: 2 }, data: button.data, unsupport_tips: '当前 QQ 版本不支持按钮，请用文字回复' },
+        })),
+      },
+    ],
+  },
+})
+
+/** The Channel's form of a pressed message button, or undefined for any other interaction or one with nobody to name. */
+export function toButtonPress(event: InteractionEvent): ButtonPress | undefined {
+  if (event.type !== QQ_INTERACTION_BUTTON) return undefined
+  const data = event.data?.resolved?.button_data
+  const senderId = event.group_openid ? event.group_member_openid : event.user_openid
+  if (!data || !senderId) return undefined
+  return { senderId, data, ...(event.group_openid ? { groupId: event.group_openid } : {}) }
+}
 
 /** QQ sends this event only for a group message that mentions the bot, with the mention already taken out. */
 const GROUP_MENTION_EVENT = 'GROUP_AT_MESSAGE_CREATE'
@@ -221,7 +257,7 @@ export function createSdkGateway({
     | undefined
 
   return {
-    async connect(credentials: Credentials, { onMessage, onLost }: GatewayEvents): Promise<void> {
+    async connect(credentials: Credentials, { onMessage, onButton, onLost }: GatewayEvents): Promise<void> {
       if (live) throw new Error('already connected to QQ')
 
       const tokens = createAccessTokenSource({ credentials })
@@ -273,7 +309,7 @@ export function createSdkGateway({
         account: { accountId: 'qq', appId: credentials.appId, clientSecret: credentials.appSecret },
         abortSignal: abort.signal,
         userAgent: USER_AGENT,
-        intents: GROUP_AND_DIRECT_CHAT_INTENT,
+        intents: GROUP_AND_DIRECT_CHAT_INTENT | INTERACTION_INTENT,
         // The SDK's info output narrates every routine reconnect, so it is kept
         // out of the log. Its debug level prints payloads and is not taken at all.
         log: {
@@ -307,6 +343,16 @@ export function createSdkGateway({
         onMessage: event => {
           const message = toInboundMessage(event)
           if (message) onMessage(message)
+        },
+        onInteraction: event => {
+          // QQ sends other interactions here too, such as a Sender switching Proactive messages off.
+          if (event.type !== QQ_INTERACTION_BUTTON) return
+          // Until QQ is told the press arrived, the button keeps spinning in the client.
+          live?.request('PUT', `/interactions/${encodeURIComponent(event.id)}`, { code: 0 }).catch(error => {
+            trace(`could not acknowledge a button press: ${error instanceof Error ? error.message : String(error)}`)
+          })
+          const press = toButtonPress(event)
+          if (press) onButton(press)
         },
       })
 

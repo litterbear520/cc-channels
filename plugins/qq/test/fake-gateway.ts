@@ -1,6 +1,7 @@
 import type { Credentials } from '../src/credentials.ts'
 import {
   AttachmentTooLargeError,
+  type ButtonPress,
   type GatewayEvents,
   type SendRefusedError,
   type InboundMessage,
@@ -73,6 +74,11 @@ export class FakeQQGateway implements QQGateway {
   /** Delivers a Direct chat or Group chat message, as QQ would. */
   receive(message: InboundMessage): void {
     this.events?.onMessage(message)
+  }
+
+  /** Delivers the press of a button, as QQ would. */
+  press(press: ButtonPress): void {
+    this.events?.onButton(press)
   }
 
   /** Ends the live connection for good, as when QQ bans the bot. */

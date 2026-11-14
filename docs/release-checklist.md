@@ -58,11 +58,12 @@ Start from a state in which the Sender is not on the allowlist (`/qq:access remo
 
 Run the session without bypassing permissions, so that a tool call asks for approval.
 
-- [ ] 20. Ask Claude, from QQ, to do something that needs approval. The prompt arrives in the Direct chat in Chinese with the tool name, a description, and a five-letter ID.
+- [ ] 20. Ask Claude, from QQ, to do something that needs approval. The prompt arrives in the Direct chat in Chinese with the tool name, a description, a five-letter ID, and an 允许 and a 拒绝 button.
 - [ ] 21. Answer `yes <id>` in QQ. The tool call goes ahead, and the answer does not show up in the session as a message.
 - [ ] 22. Trigger another prompt and answer `no <id>`. The call is denied.
 - [ ] 23. Trigger another prompt and answer it in the terminal instead. That works.
 - [ ] 24. Send a bare `yes`. It arrives as an ordinary message and approves nothing.
+- [ ] 24a. Trigger another prompt and press 允许. The tool call goes ahead, the button reads 已选：允许, and no further message arrives. Trigger one more and press 拒绝: the call is denied.
 
 ### Access policies
 

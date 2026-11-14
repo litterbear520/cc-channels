@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'bun:test'
 import { ApiError, type InboundMessage as SdkInboundMessage } from '@tencent-connect/qqbot-nodejs/protocol'
 import { AttachmentTooLargeError, SendRefusedError } from '../src/gateway.ts'
-import { createSdkGateway, messageBody, readableFaces, refusedByQQ, toInboundMessage } from '../src/sdk-gateway.ts'
+import { createSdkGateway, messageBody, readableFaces, refusedByQQ, toButtonPress, toInboundMessage } from '../src/sdk-gateway.ts'
 
 /*
  * The parts of the real gateway that need no bot: what is sent, how inbound
@@ -155,6 +155,44 @@ test('each kind of outbound content becomes the request fields QQ expects', () =
     message_reference: { message_id: 'REFIDX_1' },
   })
   expect(messageBody({ type: 'media', fileInfo: 'info' })).toEqual({ msg_type: 7, media: { file_info: 'info' } })
+})
+
+test('buttons become one row of callback buttons that anyone in the chat may press', () => {
+  const body = messageBody({
+    type: 'markdown',
+    text: 'choose',
+    buttons: [
+      { label: '允许', pressedLabel: '已选：允许', data: 'permission:allow:abcde', primary: true },
+      { label: '拒绝', pressedLabel: '已选：拒绝', data: 'permission:deny:abcde' },
+    ],
+  }) as { keyboard: { content: { rows: { buttons: Record<string, unknown>[] }[] } } }
+
+  expect(body.keyboard.content.rows).toHaveLength(1)
+  expect(body.keyboard.content.rows[0]!.buttons).toMatchObject([
+    { id: '1', render_data: { label: '允许', visited_label: '已选：允许', style: 1 }, action: { type: 1, permission: { type: 2 }, data: 'permission:allow:abcde' } },
+    { id: '2', render_data: { label: '拒绝', visited_label: '已选：拒绝', style: 0 }, action: { type: 1, permission: { type: 2 }, data: 'permission:deny:abcde' } },
+  ])
+  expect(messageBody({ type: 'markdown', text: 'plain' })).not.toHaveProperty('keyboard')
+})
+
+test('a pressed button names whoever pressed it, in a Direct chat and in a group', () => {
+  const pressed = { id: 'event-1', version: 1, type: 11, data: { type: 11, resolved: { button_id: '1', button_data: 'permission:deny:abcde' } } }
+
+  expect(toButtonPress({ ...pressed, scene: 'c2c', user_openid: 'SENDER1' })).toEqual({ senderId: 'SENDER1', data: 'permission:deny:abcde' })
+  expect(toButtonPress({ ...pressed, scene: 'group', group_openid: 'GROUP1', group_member_openid: 'SENDER1' })).toEqual({
+    senderId: 'SENDER1',
+    groupId: 'GROUP1',
+    data: 'permission:deny:abcde',
+  })
+})
+
+test('an interaction that is not a button press, or names nobody, is left out', () => {
+  const resolved = { button_data: 'permission:allow:abcde' }
+  // What QQ sends when a Sender switches Proactive messages off.
+  expect(toButtonPress({ id: 'e', version: 1, type: 18, user_openid: 'SENDER1', data: { type: 18, resolved } })).toBeUndefined()
+  expect(toButtonPress({ id: 'e', version: 1, type: 11, data: { type: 11, resolved } })).toBeUndefined()
+  expect(toButtonPress({ id: 'e', version: 1, type: 11, group_openid: 'GROUP1', user_openid: 'SENDER1', data: { type: 11, resolved } })).toBeUndefined()
+  expect(toButtonPress({ id: 'e', version: 1, type: 11, user_openid: 'SENDER1', data: { type: 11, resolved: {} } })).toBeUndefined()
 })
 
 /** A Direct chat event as the SDK hands it over, with the fields the Channel reads. */

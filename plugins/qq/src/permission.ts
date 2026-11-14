@@ -1,7 +1,9 @@
 /**
  * Relaying Claude Code's tool permission prompts to QQ: the text of the
- * prompt, and the one answer format that counts as a verdict.
+ * prompt, and the two answers that count as a verdict: one exact text, and a
+ * press of one of the prompt's buttons.
  */
+import type { Button } from './gateway.ts'
 
 /** What Claude Code sends when a tool call needs approval. Every field is untrusted text. */
 export interface PermissionRequest {
@@ -23,6 +25,15 @@ export interface Verdict {
  */
 const ANSWER = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i
 const REQUEST_ID = /^[a-km-z]{5}$/
+
+/** What a prompt's buttons carry: the verdict and the request it is for. */
+const BUTTON_DATA = /^permission:(allow|deny):([a-km-z]{5})$/
+
+/** Reads the data of a pressed button as a verdict, or returns undefined when the button is not a prompt's. */
+export function parseButtonVerdict(data: string): Verdict | undefined {
+  const match = BUTTON_DATA.exec(data)
+  return match ? { requestId: match[2]!, behavior: match[1] as Verdict['behavior'] } : undefined
+}
 
 /**
  * Checks what arrived as a permission request. Returns undefined unless it has
@@ -70,6 +81,30 @@ export function permissionPrompt(request: PermissionRequest): string {
   )
   return lines.join('\n')
 }
+
+/**
+ * The same prompt with an 允许 and a 拒绝 button under it. Buttons need a
+ * Markdown message, so the request's text, which is not ours, goes into a
+ * code block: QQ shows that as written.
+ */
+export function permissionPromptWithButtons(request: PermissionRequest): { text: string; buttons: Button[] } {
+  const details = [`工具：${shortened(request.tool_name, MAX_TOOL_NAME_LENGTH)}`]
+  if (request.description) details.push(`说明：${shortened(request.description, MAX_DESCRIPTION_LENGTH)}`)
+  if (request.input_preview) details.push(`参数：${bothEnds(request.input_preview, MAX_PREVIEW_LENGTH)}`)
+  const lines = ['**Claude 请求使用工具，需要你批准**', '', '```', ...details.map(unfenced), '```']
+  if (request.input_preview.length > MAX_PREVIEW_LENGTH) lines.push('', '参数太长，中间一段没有显示。拿不准时到终端查看完整内容再回答。')
+  lines.push('', `点下面的按钮，或回复 yes ${request.request_id} / no ${request.request_id}。也可以在终端里回答，先到的为准。`)
+  return {
+    text: lines.join('\n'),
+    buttons: [
+      { label: '允许', pressedLabel: '已选：允许', data: `permission:allow:${request.request_id}`, primary: true },
+      { label: '拒绝', pressedLabel: '已选：拒绝', data: `permission:deny:${request.request_id}` },
+    ],
+  }
+}
+
+/** Keeps text from closing the code block it is put in. */
+const unfenced = (text: string) => text.replace(/`{3,}/g, "'''")
 
 const shortened = (text: string, limit: number) => (text.length > limit ? `${text.slice(0, limit)}…` : text)
 

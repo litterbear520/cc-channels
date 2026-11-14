@@ -5,12 +5,14 @@ import { decide, mayReach, newPairingCode as randomPairingCode, readAccess, take
 import { groupChatId, groupIdOf } from './chat-id.ts'
 import { MAX_MESSAGE_LENGTH, splitText } from './chunk.ts'
 import { readCredentials } from './credentials.ts'
-import { CredentialsRejectedError, type InboundMessage, type OutboundContent, type OutboundFile, type QQGateway, type QuoteRef } from './gateway.ts'
+import { CredentialsRejectedError, type ButtonPress, type InboundMessage, type OutboundContent, type OutboundFile, type QQGateway, type QuoteRef } from './gateway.ts'
 import { createInbox, describeAttachments } from './inbox.ts'
 import { readFilesToSend } from './outbound-files.ts'
 import {
+  parseButtonVerdict,
   parseVerdict,
   permissionPrompt,
+  permissionPromptWithButtons,
   readPermissionRequest,
   type PermissionRequest,
   type Verdict,
@@ -319,10 +321,27 @@ export function createChannel({
     }
     // Under the disabled policy an answer would be dropped, so nobody is asked.
     if (access.policy === 'disabled') return
-    const prompt = plain(permissionPrompt(request))
+    // With buttons where QQ takes them; as the plain text otherwise.
+    const prompt: OutboundContent[] = [{ type: 'markdown', ...permissionPromptWithButtons(request) }, ...plain(permissionPrompt(request))]
     for (const senderId of access.allowFrom) {
       replies.deliver(senderId, prompt).catch(error => log(`could not relay a permission prompt: ${scrub(error)}`))
     }
+  }
+
+  /**
+   * Takes a pressed button as the answer to a permission prompt. Like a
+   * written answer it counts only from an allowlisted Sender in their Direct
+   * chat: a prompt is never sent to a group, and a button there is not ours.
+   */
+  async function takeButtonPress(press: ButtonPress): Promise<void> {
+    if (press.groupId !== undefined || !mayReach(stateDir, press.senderId)) return
+    const verdict = parseButtonVerdict(press.data)
+    if (!verdict) return
+    // The button itself shows the Sender what they chose, so no message confirms it.
+    await mcp.notification({
+      method: 'notifications/claude/channel/permission',
+      params: { request_id: verdict.requestId, behavior: verdict.behavior },
+    })
   }
 
   /**
@@ -573,6 +592,9 @@ export function createChannel({
     const onMessage = (message: InboundMessage) => {
       void handleInbound(message).catch(error => log(`could not handle an inbound message: ${scrub(error)}`))
     }
+    const onButton = (press: ButtonPress) => {
+      void takeButtonPress(press).catch(error => log(`could not handle a button press: ${scrub(error)}`))
+    }
     const onLost = (error: Error) => {
       // Approvals stay marked until a later session can confirm them.
       clearInterval(approvalPoll)
@@ -582,7 +604,7 @@ export function createChannel({
       ).catch(reportingFailed)
     }
     try {
-      await gateway.connect(credentials, { onMessage, onLost })
+      await gateway.connect(credentials, { onMessage, onButton, onLost })
       log('connected to QQ')
       if (stopped) return
       approvalPoll = setInterval(() => {

@@ -716,6 +716,19 @@ discord 插件里另外两个小功能：
 
 对设计的含义：allowlist 可以直接用于群成员，不需要另一套身份；插件要自己判断消息有没有 @ 机器人，不能依赖 QQ 只推送 @ 消息；给群的回答超过被动回复窗口后取决于群主的设置。
 
+### D11. 消息按钮（2026-11-14）
+
+脚本 `.scratch/qq-channel/spike/buttons.ts`（不随仓库发布）。同一个机器人，点按钮的是创建者本人，手机 QQ。每项只测了一次。
+
+- 【实测】自定义按钮（`keyboard.content.rows[].buttons[]`，`action.type=1` 回调，`permission.type=2`）随 Markdown 消息（`msg_type=2`）发出，QQ 接受，没有申请过任何权限。[消息按钮](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/trans/msg-btn.html)页面写的"【内邀开通】自定义按钮"对这个机器人不成立。单聊被动回复、群聊被动回复、单聊主动消息三种都成功。没有测 `msg_type=0` 带按钮。
+- 【实测】点按钮后收到 `INTERACTION_CREATE`，`type` 和 `data.type` 都是 11，`data.resolved` 里有 `button_id` 和 `button_data`。单聊事件带 `user_openid`（`scene: "c2c"`，`chat_type: 2`），群聊事件带 `group_openid` 和 `group_member_openid`（`scene: "group"`，`chat_type: 1`）。两处的 ID 都等于这个人单聊的 `user_openid`。事件里没有被点的那条消息的 ID。
+- 【实测】`PUT /interactions/{id}`，body `{"code": 0}`，成功。客户端弹出"操作成功"，按钮文字变成 `visited_label`。同一条消息上的另一个按钮之后仍然可以点。
+- 【实测】用这个事件的 `id` 作 `event_id` 发被动消息被拒：`40034025 请求参数event_id无效`，单聊和群聊都是。文档（A6）说单聊支持以 `INTERACTION_CREATE` 的 `event_id` 被动回复，实测不成立，或者需要别的条件。
+- 【实测】Markdown 代码块里的 `*star*`、`_under_`、`<tag>` 原样显示。
+- 没有测：别人（非创建者）点按钮；`permission.type=0` 加 `specify_user_ids` 限定点击人；桌面 QQ 的显示；应答超时的时长。
+
+对设计的含义：权限请求可以带"允许 / 拒绝"按钮，点击人的 ID 可以直接和 allowlist 比对；点击后的确认不用再发消息，按钮自己会变；QQ 没有编辑消息的接口，裁决之后按钮撤不掉，重复点击要靠 Claude Code 忽略已经结束的请求。
+
 ---
 
 ## 未解决的问题
@@ -732,7 +745,7 @@ discord 插件里另外两个小功能：
 8. **入站附件 `url` 的有效期，以及下载是否需要鉴权头。** **部分解决（D2）**：不需要鉴权头；有效期没有测。
 9. **`file_data` 直传的编码方式**（推测为 base64），以及本地文件走分片上传的完整流程是否对个人机器人开放。
 10. **单条文本和 Markdown 消息的长度上限**（SDK 注释为约 5000 字符），以及带 URL、代码块的内容是否会被内容安全拦截或要求 URL 报备。 **部分解决（D6、D7、D8）**：接口对普通文本没有长度上限（试到 100 万字符），但超长消息会让手机 QQ 闪退，上限须自定；一个链接和一个代码块没有被拦截；Markdown 消息的上限没有测。
-11. **自定义消息按钮（`keyboard.content`）是否对个人机器人开放**，回调按钮（`action.type=1`）能否用于权限审批。
+11. **自定义消息按钮（`keyboard.content`）是否对个人机器人开放**，回调按钮（`action.type=1`）能否用于权限审批。 **已解决（D11）**：对这个机器人开放，可以用于权限审批。
 12. **access_token 过期后已建立的 WebSocket 连接是否会被断开**，resume 时用新 token 是否可行，"短时间内重连补发事件"的时间窗口多长。
 13. **IP 白名单是否影响 WebSocket 网关连接。**
 14. **Webhook 回调地址是否要求备案域名、是否允许裸 IP、失败重试策略。**（仅在需要 Webhook 时才要查。）
