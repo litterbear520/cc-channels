@@ -144,5 +144,5 @@ Run with scripts standing in for Claude Code, against the bot's creator in a Dir
 | Steps | Outcome |
 | --- | --- |
 | 20, 24a | A permission prompt arrived with both buttons. Pressing 允许 returned an allow verdict for the request, and the button read 已选：允许. Pressing 拒绝 on a real prompt, and a real session that is not bypassing permissions, were not run. |
-| 18a | QQ accepted a 12 MB `.txt`, uploaded in two parts, and a 6.4 MB `.png`, both through the plugin's own gateway. The maintainer reported that they arrived in the Direct chat and could be used. A group was not checked. |
+| 18a | QQ accepted a 12 MB `.txt`, uploaded in two parts, and a 6.4 MB `.png`, both through the plugin's own gateway. The maintainer reported that they arrived in the Direct chat and could be used. After a restart, in a real session, the `reply` tool sent a 6 MB `.txt` to a group, and the maintainer reported that it showed there and opened. |
 | 18 | Not run. Covered by the automated tests only. |
