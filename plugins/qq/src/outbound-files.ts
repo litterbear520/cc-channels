@@ -3,8 +3,8 @@ import { basename, extname, isAbsolute, join, sep } from 'node:path'
 import type { OutboundFile } from './gateway.ts'
 import { inboxDir } from './inbox.ts'
 
-/** The most QQ's direct upload takes. Larger files need its chunked upload, which is not built. */
-export const MAX_FILE_BYTES = 5 * 1024 * 1024
+/** The official discord Channel's limit. QQ documents more: 30 MB for an image, 100 MB for a file. */
+export const MAX_FILE_BYTES = 25 * 1024 * 1024
 const MAX_FILES_PER_REPLY = 10
 /**
  * What is uploaded as an image: the formats QQ's upload documentation lists,
@@ -44,7 +44,7 @@ export function readFilesToSend(stateDir: string, paths: string[]): OutboundFile
     if (stats.size > MAX_FILE_BYTES) {
       const megabytes = (stats.size / (1024 * 1024)).toFixed(1)
       throw new Error(
-        `${path} is ${megabytes} MB, and the QQ channel sends files of at most 5 MB; offer another way to deliver it`,
+        `${path} is ${megabytes} MB, and the QQ channel sends files of at most 25 MB; offer another way to deliver it`,
       )
     }
     let data: Uint8Array

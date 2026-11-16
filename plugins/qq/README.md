@@ -92,7 +92,7 @@ Anyone on the allowlist can give your Claude Code session instructions, with wha
 
 | Tool | Purpose |
 | --- | --- |
-| `reply` | Send to a Direct chat or a group. Takes `chat_id` + `text`, optionally `reply_to` (message ID) to show the answer as quoting that message and `files` (absolute paths) for attachments — max 10 files, 5 MB each. Text is sent as Markdown and auto-chunked at 2000 characters. Returns the sent message ID(s). |
+| `reply` | Send to a Direct chat or a group. Takes `chat_id` + `text`, optionally `reply_to` (message ID) to show the answer as quoting that message and `files` (absolute paths) for attachments — max 10 files, 25 MB each. Text is sent as Markdown and auto-chunked at 2000 characters. Returns the sent message ID(s). |
 | `download_attachment` | Download all attachments from a specific message by ID to `~/.claude/channels/qq/inbox/`. Returns file paths + metadata. |
 | `recall` | Take back a message the bot sent, within two minutes of sending it. Only works on messages sent since the server last started. |
 
@@ -126,7 +126,7 @@ Attachments are **not** auto-downloaded. The `<channel>` notification lists each
 
 Only recent messages can be fetched this way, and none from before a restart: QQ cannot be asked for a past message, so the server keeps the attachment references in memory.
 
-Outbound, a `.png`, `.jpg`, `.jpeg` or `.gif` is shown as an image, a GIF animated; anything else arrives as a file. Files over 5 MB are refused: QQ's chunked upload is not implemented. Files in the state directory other than the inbox, such as `.env`, are never sent.
+Outbound, a `.png`, `.jpg`, `.jpeg` or `.gif` is shown as an image, a GIF animated; anything else arrives as a file. A file over 5 MB goes through QQ's chunked upload, which takes a few seconds longer; one over 25 MB is refused. Files in the state directory other than the inbox, such as `.env`, are never sent.
 
 ## Permission prompts
 

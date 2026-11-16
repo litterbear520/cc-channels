@@ -1,7 +1,10 @@
 import {
   ApiClient,
   ApiError,
+  ChunkedMediaApi,
   GatewayConnection,
+  UploadDailyLimitExceededError,
+  type TokenManager,
   type InteractionEvent,
   type InboundMessage as SdkInboundMessage,
 } from '@tencent-connect/qqbot-nodejs/protocol'
@@ -36,6 +39,8 @@ const QQ_MESSAGE_TYPE_QUOTE = 103
 const TYPING_SECONDS = 30
 const QQ_FILE_TYPE_IMAGE = 1
 const QQ_FILE_TYPE_FILE = 4
+/** The most QQ's direct upload takes. A larger file goes through its chunked upload. */
+const DIRECT_UPLOAD_MAX_BYTES = 5 * 1024 * 1024
 /** How long one attachment may take to download, from the request to the last byte. */
 const DOWNLOAD_TIMEOUT_MS = 120_000
 
@@ -253,6 +258,8 @@ export function createSdkGateway({
          * {@link SendRefusedError} when QQ certainly did not act on it.
          */
         request: (method: string, path: string, body: unknown) => Promise<unknown>
+        /** Uploads a file too large for the direct upload, and returns QQ's reference to it. */
+        uploadInParts: (chatId: string, file: OutboundFile) => Promise<string>
       }
     | undefined
 
@@ -374,7 +381,33 @@ export function createSdkGateway({
           throw refusedByQQ(error) ? new SendRefusedError(reason(error)) : new Error(reason(error))
         }
       }
-      live = { abort, finished, request }
+      // The SDK's chunked upload asks its own token manager for a token; it is
+      // handed this connection's source instead, so that one token is in use.
+      const chunked = new ChunkedMediaApi(api, {
+        getAccessToken: async () => (lastToken = await tokens.get()),
+      } as unknown as TokenManager)
+      const uploadInParts = async (chatId: string, file: OutboundFile) => {
+        const groupId = groupIdOf(chatId)
+        try {
+          const uploaded = await chunked.uploadChunked({
+            scope: groupId === undefined ? 'c2c' : 'group',
+            targetId: encodeURIComponent(groupId ?? chatId),
+            fileType: file.kind === 'image' ? QQ_FILE_TYPE_IMAGE : QQ_FILE_TYPE_FILE,
+            source: { kind: 'buffer', buffer: Buffer.from(file.data.buffer, file.data.byteOffset, file.data.byteLength) },
+            fileName: file.name,
+            creds: { appId: credentials.appId, clientSecret: credentials.appSecret },
+          })
+          if (!uploaded.file_info) throw new Error('QQ took the upload but returned no reference to the file')
+          return uploaded.file_info
+        } catch (error) {
+          const reason = withoutSecrets(error instanceof Error ? error.message : String(error))
+          if (error instanceof UploadDailyLimitExceededError) {
+            throw new Error(`QQ's daily allowance for large uploads is used up (${reason}); offer another way to deliver the file`)
+          }
+          throw new Error(reason)
+        }
+      }
+      live = { abort, finished, request, uploadInParts }
 
       try {
         await accepted
@@ -405,8 +438,9 @@ export function createSdkGateway({
 
     async upload(chatId: string, file: OutboundFile): Promise<string> {
       if (!live) throw new Error('not connected to QQ')
-      // QQ's direct upload: the bytes travel base64-encoded in the request body.
       // A file uploaded for one chat cannot be sent to another.
+      if (file.data.byteLength > DIRECT_UPLOAD_MAX_BYTES) return live.uploadInParts(chatId, file)
+      // QQ's direct upload: the bytes travel base64-encoded in the request body.
       const uploaded = (await live.request('POST', `${chatPath(chatId)}/files`, {
         file_type: file.kind === 'image' ? QQ_FILE_TYPE_IMAGE : QQ_FILE_TYPE_FILE,
         srv_send_msg: false,

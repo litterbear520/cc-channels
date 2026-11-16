@@ -51,7 +51,8 @@ Start from a state in which the Sender is not on the allowlist (`/qq:access remo
 - [ ] 15. Send the bot a file. Claude downloads and reads it the same way.
 - [ ] 16. Ask Claude to send back a `.png` or `.jpg` from disk. It is displayed as an image in the Direct chat.
 - [ ] 17. Ask Claude to send back another kind of file, such as a `.txt`. It arrives as a file with its own name and opens.
-- [ ] 18. Ask Claude to send a file larger than 5 MB. It reports the limit and sends nothing.
+- [ ] 18. Ask Claude to send a file larger than 25 MB. It reports the limit and sends nothing.
+- [ ] 18a. Ask Claude to send a file of between 5 MB and 25 MB, and an image of that size. Both arrive and open.
 - [ ] 19. Ask Claude to send `~/.claude/channels/qq/.env`. It is refused.
 
 ### Permission relay
@@ -113,7 +114,7 @@ Later the same day, in a real session started with the flag, the maintainer repo
 | 13 | An answer of more than 2000 characters arrived as several messages. |
 | 14 to 17 | Images and files worked in both directions and displayed normally. |
 
-Not run, by the maintainer's decision to deal with them if a problem shows up: 7 and 18 to 26, which include the 5 MB and state-directory refusals, the whole permission relay, and the allowlist and disabled policies. Those are covered by the automated tests only.
+Not run, by the maintainer's decision to deal with them if a problem shows up: 7 and 18 to 26, which include the size-limit and state-directory refusals, the whole permission relay, and the allowlist and disabled policies. Those are covered by the automated tests only.
 
 After the session was restarted with the code for quoting, typing status, and quoted messages, the maintainer reported three further checks as passed. They are not numbered steps of this checklist:
 
@@ -135,3 +136,13 @@ One group, in which the only member writing was the bot's creator, who owns the 
 | 34 | QQ accepted the recall of a group message from a script. The `recall` tool, a Direct chat, and the message disappearing in the client are not confirmed. |
 | 36 | A `.gif` sent to the group played as an animation. Not checked in a Direct chat. |
 | 30 to 32, 35, 37 | Not run. Covered by the automated tests only. |
+
+### 2026-11-14 and 2026-11-16, partial, permission buttons and large files
+
+Run with scripts standing in for Claude Code, against the bot's creator in a Direct chat. Steps 20 and 24a were changed and step 18a was added with these features.
+
+| Steps | Outcome |
+| --- | --- |
+| 20, 24a | A permission prompt arrived with both buttons. Pressing 允许 returned an allow verdict for the request, and the button read 已选：允许. Pressing 拒绝 on a real prompt, and a real session that is not bypassing permissions, were not run. |
+| 18a | QQ accepted a 12 MB `.txt`, uploaded in two parts, and a 6.4 MB `.png`, both through the plugin's own gateway. How they displayed in the QQ client has not been confirmed. A group was not checked. |
+| 18 | Not run. Covered by the automated tests only. |

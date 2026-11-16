@@ -82,32 +82,32 @@ test('a reply with text and files delivers the text first and then every file', 
   for (const id of ['sent-1', 'sent-2', 'sent-3']) expect(result.text).toContain(id)
 })
 
-test('a file over 5 MB is refused with the limit, before anything is sent', async () => {
+test('a file over 25 MB is refused with the limit, before anything is sent', async () => {
   const { gateway, callTool, fileNamed } = await startWithFiles()
   const small = fileNamed('small.txt')
-  const large = fileNamed('video.mp4', new Uint8Array(5 * MB + 1))
+  const large = fileNamed('video.mp4', new Uint8Array(25 * MB + 1))
 
   const result = await callTool('reply', { chat_id: 'SENDER1', text: 'Two files.', files: [small, large] })
 
   expect(result.isError).toBe(true)
   expect(result.text).toContain('video.mp4')
-  expect(result.text).toContain('5 MB')
+  expect(result.text).toContain('25 MB')
   expect(result.text).toContain('nothing was sent')
   expect(gateway.sent).toHaveLength(0)
   expect(gateway.uploads).toHaveLength(0)
 })
 
-test('a file of exactly 5 MB is sent', async () => {
+test('a file of exactly 25 MB is sent', async () => {
   const { gateway, callTool, fileNamed } = await startWithFiles()
 
   const result = await callTool('reply', {
     chat_id: 'SENDER1',
     text: '',
-    files: [fileNamed('dump.bin', new Uint8Array(5 * MB))],
+    files: [fileNamed('dump.bin', new Uint8Array(25 * MB))],
   })
 
   expect(result.isError).toBe(false)
-  expect(gateway.uploads[0]!.data.byteLength).toBe(5 * MB)
+  expect(gateway.uploads[0]!.data.byteLength).toBe(25 * MB)
 })
 
 test('files in the state directory are refused, except those in the inbox', async () => {

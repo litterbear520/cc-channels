@@ -47,7 +47,7 @@ const INSTRUCTIONS = [
     'what you write in the terminal never reaches QQ. Write the text as Markdown; long text is split into ' +
     'several messages for you. Pass a message_id as reply_to only when it would be unclear which message ' +
     'you are answering; QQ then shows your answer as quoting it. To send an image or a file, pass its ' +
-    'absolute path in files; one of over 5 MB is refused, so offer another way to deliver it.',
+    'absolute path in files; one of over 25 MB is refused, so offer another way to deliver it.',
   'A tag with attachment_count carries images or files that have not been downloaded. Call ' +
     'download_attachment with the tag\'s chat_id and message_id to save them locally, then read the paths it ' +
     'returns. Only recent messages can be fetched this way, and none from before a restart.',
@@ -120,7 +120,7 @@ const TOOLS = [
           type: 'array',
           items: { type: 'string' },
           description:
-            'Absolute paths of local files to send after the text, each as a message of its own. At most 5 MB ' +
+            'Absolute paths of local files to send after the text, each as a message of its own. At most 25 MB ' +
             'each. A .png, .jpg, .jpeg or .gif is shown as an image, a GIF animated; anything else arrives as a file.',
         },
       },
