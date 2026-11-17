@@ -52,14 +52,19 @@ test('when QQ rejects the credentials the Channel says so once and does not try 
   expect(await request('ping')).toEqual({})
 })
 
-test('a status event waits for Claude Code to finish its handshake', async () => {
-  const { events, initialize } = await startChannel({ configured: false })
+test('a status event waits until Claude Code has listed the tools, which is when it starts listening', async () => {
+  const { events, dropped, request, initialize } = await startChannel({ configured: false })
+  await settle()
+  await initialize({ listTools: false })
   await settle()
   expect(events).toHaveLength(0)
+  expect(dropped).toHaveLength(0)
 
-  await initialize()
+  await request('tools/list')
   await settle()
+  expect(dropped).toHaveLength(0)
   expect(events).toHaveLength(1)
+  expect(events[0]!.content).toContain('/qq:configure')
 })
 
 test('nothing the Channel logs or pushes contains the AppSecret', async () => {

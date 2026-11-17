@@ -35,6 +35,7 @@ export async function startChannel({
     // Codes are handed out in the order given; without any, the Channel makes its own.
     ...(pairingCodes.length > 0 ? { newPairingCode: () => pairingCodes.shift() ?? 'ffffff' } : {}),
     approvalPollMs: 2,
+    listeningDelayMs: 1,
   })
   stopAfterTest(() => channel.stop())
   const [claudeCodeSide, channelSide] = InMemoryTransport.createLinkedPair()
@@ -42,17 +43,22 @@ export async function startChannel({
   const pending = new Map<number, { resolve: (result: any) => void; reject: (error: Error) => void }>()
   /** Channel events pushed into the session, in order. */
   const events: { content: string; meta?: Record<string, string> }[] = []
+  /** Channel events that arrived before Claude Code was listening for them, and were lost. */
+  const dropped: (typeof events)[number][] = []
   /** Answers to permission prompts the Channel passed on, in order. */
   const verdicts: { request_id: string; behavior: string }[] = []
+  // Claude Code registers its handler for Channel events only once it has the server's list of tools.
+  let listening = false
   claudeCodeSide.onmessage = message => {
     if ('method' in message && message.method === 'notifications/claude/channel') {
-      events.push(message.params as (typeof events)[number])
+      ;(listening ? events : dropped).push(message.params as (typeof events)[number])
     }
     if ('method' in message && message.method === 'notifications/claude/channel/permission') {
       verdicts.push(message.params as (typeof verdicts)[number])
     }
     if (!('id' in message)) return
     const waiting = pending.get(Number(message.id))
+    if ('result' in message && 'tools' in message.result) listening = true
     if ('result' in message) waiting?.resolve(message.result)
     if ('error' in message) waiting?.reject(new Error(message.error.message))
   }
@@ -64,14 +70,18 @@ export async function startChannel({
     void claudeCodeSide.send({ jsonrpc: '2.0', id, method, params })
     return result
   }
-  /** Completes the MCP handshake. Claude Code asks stdio servers for 2026-07-28 by default. */
-  async function initialize(): Promise<any> {
+  /**
+   * Completes the MCP handshake and lists the tools, as Claude Code does before it listens for
+   * Channel events. Claude Code asks stdio servers for 2026-07-28 by default.
+   */
+  async function initialize({ listTools = true } = {}): Promise<any> {
     const result = await request('initialize', {
       protocolVersion: '2026-07-28',
       capabilities: {},
       clientInfo: { name: 'claude-code', version: '0.0.0' },
     })
     await claudeCodeSide.send({ jsonrpc: '2.0', method: 'notifications/initialized' })
+    if (listTools) await request('tools/list')
     return result
   }
 
@@ -97,7 +107,7 @@ export async function startChannel({
 
   await claudeCodeSide.start()
   await channel.start(channelSide)
-  return { channel, gateway, stateDir, clock, logged, events, verdicts, request, initialize, callTool, askPermission }
+  return { channel, gateway, stateDir, clock, logged, events, dropped, verdicts, request, initialize, callTool, askPermission }
 }
 
 /** Lets the Channel's background work (connecting, pushing events) run. */

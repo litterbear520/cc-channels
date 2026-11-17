@@ -38,6 +38,8 @@ export interface ChannelOptions {
   newPairingCode?: () => string
   /** How often to look for Pairings the user approved in the terminal. */
   approvalPollMs?: number
+  /** How long after answering the first tools/list Claude Code is taken to listen for Channel events. */
+  listeningDelayMs?: number
 }
 
 const INSTRUCTIONS = [
@@ -231,6 +233,8 @@ export function createChannel({
   now = Date.now,
   newPairingCode = randomPairingCode,
   approvalPollMs = 5000,
+  // Generous on purpose: an event loses nothing by waiting a second at startup.
+  listeningDelayMs = 1000,
 }: ChannelOptions): Channel {
   const mcp = new Server(
     { name: 'qq', version: '0.0.1' },
@@ -245,9 +249,12 @@ export function createChannel({
     },
   )
 
-  let announceInitialized = () => {}
-  const initialized = new Promise<void>(resolve => (announceInitialized = resolve))
-  mcp.oninitialized = () => announceInitialized()
+  // Claude Code drops a Channel event that arrives before it registers its handler for them. It
+  // registers the handler only after the handshake and after it has the server's list of tools, and
+  // tells the server neither. So an event waits for the first tools/list, and a little longer, because
+  // the answer still has to reach Claude Code and be processed.
+  let announceListening = () => {}
+  const listening = new Promise<void>(resolve => (announceListening = resolve))
 
   /**
    * Reports a problem the user has to act on. Stderr is only visible in debug
@@ -255,8 +262,7 @@ export function createChannel({
    */
   async function reportProblem(problem: string): Promise<void> {
     log(problem)
-    // Claude Code drops events sent before its handshake is done.
-    await initialized
+    await listening
     await mcp.notification({
       method: 'notifications/claude/channel',
       params: { content: problem, meta: { kind: 'status' } },
@@ -266,7 +272,10 @@ export function createChannel({
   const replies = createReplyPolicy({ gateway, now })
   const inbox = createInbox({ gateway, stateDir, now })
 
-  mcp.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }))
+  mcp.setRequestHandler(ListToolsRequestSchema, async () => {
+    setTimeout(announceListening, listeningDelayMs)
+    return { tools: TOOLS }
+  })
   mcp.setRequestHandler(CallToolRequestSchema, async request => {
     const args = request.params.arguments ?? {}
     try {
@@ -532,7 +541,7 @@ export function createChannel({
     // Cosmetic, so a refusal is not worth a log line and never holds the message back.
     // QQ has no typing status in a Group chat.
     if (!group) gateway.showTyping(message.senderId, message.messageId).catch(() => {})
-    await initialized
+    await listening
     await mcp.notification({
       method: 'notifications/claude/channel',
       params: {
