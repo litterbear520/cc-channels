@@ -143,6 +143,6 @@ What was seen against a real bot, including where QQ did not enforce its documen
 
 ## Troubleshooting
 
-- **The bot does not answer at all.** The session was started without the flag, or it has exited. The channel is loaded only when "Channels (experimental)" at startup names `plugin:qq@cc-channels`.
+- **The bot does not answer, or only hands out Pairing codes.** The session was started without the flag, or it has exited. Without the flag the server still starts and connects to QQ, but Claude Code drops every message it passes on. The channel is loaded only when "Channels (experimental)" at startup names `plugin:qq@cc-channels`.
 - **The session says QQ rejected the credentials.** Run `/qq:configure <AppID> <AppSecret>` again and restart Claude Code: the server reads the credentials only at startup.
 - **Connection events are needed.** Start with `QQ_CHANNEL_TRACE=1` to have the routine connects and reconnects written to the server's log.

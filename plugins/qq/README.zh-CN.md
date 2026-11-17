@@ -143,6 +143,6 @@ Claude Code 的某次工具调用需要批准时，请求也会发到每个已�
 
 ## 排查
 
-- **机器人完全没反应。** 会话不是带标志启动的，或者已经退出。只有启动时的"Channels (experimental)"提示里出现 `plugin:qq@cc-channels`，channel 才算加载了。
+- **机器人没反应，或者只会回 Pairing 码。** 会话不是带标志启动的，或者已经退出。不带标志时 server 照样启动并连上 QQ，但它转来的消息都被 Claude Code 丢掉。只有启动时的"Channels (experimental)"提示里出现 `plugin:qq@cc-channels`，channel 才算加载了。
 - **会话提示 QQ 拒绝了凭据。** 重新运行 `/qq:configure <AppID> <AppSecret>`，然后重启 Claude Code：server 只在启动时读取凭据。
 - **需要看连接事件。** 用 `QQ_CHANNEL_TRACE=1` 启动，例行的连接和重连会写进 server 的日志。
