@@ -42,7 +42,7 @@ Add the marketplace, then install the plugin:
 /plugin install qq@cc-channels
 ```
 
-The plugin installs its dependencies from its lockfile the first time it starts. It ships no registry configuration, so the install follows your own Bun or npm configuration, mirror included.
+The plugin's dependencies are installed from its lockfile when the plugin is installed, or at the latest the first time it starts. It ships no registry configuration, so the install follows your own Bun or npm configuration, mirror included.
 
 **4. Give the server the credentials.**
 
@@ -56,7 +56,7 @@ Writes `QQ_BOT_APP_ID=...` and `QQ_BOT_APP_SECRET=...` to `~/.claude/channels/qq
 
 **5. Relaunch with the channel flag.**
 
-The server won't connect without this — exit your session and start a new one:
+Without this no QQ message reaches your session — exit it and start a new one:
 
 ```sh
 claude --dangerously-load-development-channels plugin:qq@cc-channels

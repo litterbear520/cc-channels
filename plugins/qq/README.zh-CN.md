@@ -42,7 +42,7 @@ IP 白名单留空，除非你确定本机出口地址。
 /plugin install qq@cc-channels
 ```
 
-插件第一次启动时按 lockfile 安装依赖。它不带任何 registry 配置，安装时用的是你自己的 Bun 或 npm 配置，镜像也一样。
+依赖在安装插件时按 lockfile 装好，最迟在第一次启动时装好。它不带任何 registry 配置，安装时用的是你自己的 Bun 或 npm 配置，镜像也一样。
 
 **4. 把凭据交给 server。**
 
@@ -56,7 +56,7 @@ IP 白名单留空，除非你确定本机出口地址。
 
 **5. 带 channel 标志重新启动。**
 
-不带这个标志 server 不会连接。退出当前会话，重新启动：
+不带这个标志，QQ 消息进不了会话。退出当前会话，重新启动：
 
 ```sh
 claude --dangerously-load-development-channels plugin:qq@cc-channels
