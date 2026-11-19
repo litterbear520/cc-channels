@@ -50,6 +50,9 @@ const INSTRUCTIONS = [
     'several messages for you. Pass a message_id as reply_to only when it would be unclear which message ' +
     'you are answering; QQ then shows your answer as quoting it. To send an image or a file, pass its ' +
     'absolute path in files; one of over 25 MB is refused, so offer another way to deliver it.',
+  'In a Direct chat you can also write first, with no message to answer, for example to report that a ' +
+    'long task has finished: a Direct chat\'s chat_id is its Sender\'s sender_id, and any Sender on the ' +
+    'allowlist can be written to at any time.',
   'A tag with attachment_count carries images or files that have not been downloaded. Call ' +
     'download_attachment with the tag\'s chat_id and message_id to save them locally, then read the paths it ' +
     'returns. Only recent messages can be fetched this way, and none from before a restart.',
@@ -101,7 +104,8 @@ const TOOLS = [
   {
     name: 'reply',
     description:
-      'Send a message to a QQ Direct chat or group. Pass the chat_id from the inbound <channel> tag. The text is sent ' +
+      'Send a message to a QQ Direct chat or group. Pass the chat_id from an inbound <channel> tag; in a Direct chat ' +
+        'it is the Sender\'s sender_id, and you can write first, with no message to answer. The text is sent ' +
       `as Markdown, and text over ${MAX_MESSAGE_LENGTH} characters is split into several messages. Local files ` +
       'can be attached with files. Returns the ' +
       'IDs of the messages sent, or an error saying why QQ did not take them; nothing is retried later. ' +
@@ -110,7 +114,12 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        chat_id: { type: 'string', description: 'The chat_id of the inbound message being answered.' },
+        chat_id: {
+          type: 'string',
+          description:
+            'The chat_id from an inbound <channel> tag. A Direct chat\'s is its Sender\'s sender_id, which works with ' +
+            'no message to answer.',
+        },
         text: { type: 'string', description: 'The message, as Markdown. May be empty when files are given.' },
         reply_to: {
           type: 'string',

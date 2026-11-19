@@ -4,7 +4,7 @@
 
 Connect a QQ bot to your Claude Code with an MCP server.
 
-When the bot receives a message in a Direct chat or a group, the MCP server forwards it to Claude and provides tools to reply, send images and files, and take a message back. Tool permission prompts are relayed to QQ too, so you can approve them from your phone.
+When the bot receives a message in a Direct chat or a group, the MCP server forwards it to Claude and provides tools to reply, send images and files, and take a message back. Claude can also write first to the Direct chat of a paired Sender, for example when a long task finishes, without waiting for a message. Tool permission prompts are relayed to QQ too, so you can approve them from your phone.
 
 It uses only the official QQ Bot API, and dials out to QQ over WebSocket: you need no public URL, tunnel, or server.
 
@@ -135,7 +135,7 @@ When Claude Code needs approval for a tool call, the prompt is also sent to the 
 ## Limits
 
 - **Direct chats and groups only.** Guild (QQ 频道) is not supported.
-- **Replies are metered by QQ.** QQ documents that a bot may answer one inbound message with at most 4 Passive replies within 60 minutes in a Direct chat, and 5 within 5 minutes in a group. Within those limits the server sends a Passive reply; beyond them it sends a Proactive message, which a Direct chat recipient can switch off and a group takes only when its owner has allowed the bot to write first. So the result of a long task may not reach a group. When a message cannot be delivered Claude is told why; nothing is queued or retried.
+- **Replies are metered by QQ.** QQ documents that a bot may answer one inbound message with at most 4 Passive replies within 60 minutes in a Direct chat, and 5 within 5 minutes in a group. Within those limits the server sends a Passive reply; beyond them, or when nothing has arrived to answer, it sends a Proactive message. A Direct chat takes Proactive messages by default: QQ's setting for them (允许主动发送消息) is on unless the recipient switches it off, so Claude can write to a Direct chat at any time. A group takes them only when its owner has allowed the bot to write first, so the result of a long task may not reach a group. When a message cannot be delivered Claude is told why; nothing is queued or retried.
 - **A lost answer is not sent twice.** When the connection breaks before QQ answers, the message may or may not have arrived. It is not sent again, and Claude is told so.
 - **One long-lived session is the intended setup.** QQ delivers each message to every connection of a bot. If several Claude Code sessions of one account have the plugin enabled, an unknown Sender can be answered more than once.
 

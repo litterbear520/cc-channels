@@ -33,7 +33,7 @@ A QQ message sent in answer to a specific inbound message, allowed only within a
 _Avoid_: reply (unqualified), response
 
 **Proactive message**:
-A QQ message sent without reference to an inbound message, which the recipient can switch off.
+A QQ message sent without reference to an inbound message. A Direct chat takes them by default and its Sender can switch them off; a group takes them only once its owner allows it.
 _Avoid_: active message, push
 
 **Guild**:

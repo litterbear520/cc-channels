@@ -216,6 +216,14 @@ test('the instructions cover the reply tool and what QQ cannot do', async () => 
   for (const missing of ['edit', 'reaction', 'history']) expect(instructions).toContain(missing)
 })
 
+test('the instructions tell Claude it can write first in a Direct chat, using the sender_id', async () => {
+  const { initialize } = await startChannel()
+  const { instructions } = await initialize()
+
+  expect(instructions).toContain('write first')
+  expect(instructions).toContain("chat_id is its Sender's sender_id")
+})
+
 test('text that is only whitespace is refused instead of sent as an empty message', async () => {
   const { gateway, callTool } = await startWithMessageFrom('SENDER1')
 
