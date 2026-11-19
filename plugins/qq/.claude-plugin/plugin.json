@@ -1,7 +1,7 @@
 {
   "name": "qq",
   "description": "QQ channel for Claude Code — talk to a running session from a QQ direct chat or group, through the official QQ Bot API.",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "author": {
     "name": "huangsitao",
     "url": "https://github.com/litterbear520"

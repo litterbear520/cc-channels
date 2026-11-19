@@ -245,7 +245,7 @@ export function createChannel({
   listeningDelayMs = 1000,
 }: ChannelOptions): Channel {
   const mcp = new Server(
-    { name: 'qq', version: '0.0.3' },
+    { name: 'qq', version: '0.0.4' },
     // The presence of this key is what makes Claude Code treat the server as a Channel.
     {
       capabilities: {
