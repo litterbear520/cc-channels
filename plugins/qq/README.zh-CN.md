@@ -4,7 +4,7 @@
 
 用一个 MCP server 把 QQ 机器人接到你的 Claude Code 上。
 
-机器人在 Direct chat（单聊）或群里收到消息时，MCP server 把它转给 Claude，并提供回复、发图片和文件、撤回消息的工具。Claude 也可以不等消息，主动给已配对 Sender 的 Direct chat 发消息，例如长任务做完时报告结果。工具权限请求也会转到 QQ，可以在手机上批准。
+机器人在 Direct chat（单聊）或群里收到消息时，MCP server 把它转给 Claude，并提供回复、发图片和文件、撤回消息的工具。Claude 也可以不等消息，主动给已配对 Sender 的 Direct chat 或已登记的群发消息，例如长任务做完时报告结果。工具权限请求也会转到 QQ，可以在手机上批准。
 
 只使用官方 QQ 机器人 API，由本机通过 WebSocket 主动连接 QQ：不需要公网地址、隧道或服务器。
 
@@ -135,7 +135,7 @@ Claude Code 的某次工具调用需要批准时，请求也会发到每个已�
 ## 限制
 
 - **只支持 Direct chat 和群。** 不支持 Guild（QQ 频道）。
-- **回复数量受 QQ 限制。** QQ 文档规定：对一条收到的消息，Direct chat 里 60 分钟内最多 4 条 Passive reply（被动回复），群里 5 分钟内最多 5 条。限制之内 server 发 Passive reply；超出之后，或者没有可回复的消息时，改发 Proactive message（主动消息）。Direct chat 默认接收 Proactive message：QQ 里对应的设置“允许主动发送消息”默认打开，接收者关掉它之前，Claude 随时都能给 Direct chat 发消息。群只有在群主允许机器人主动发言时才接收，所以长任务的结果可能发不回群里。发不出去时 Claude 会得知原因；消息不排队，也不重试。
+- **回复数量受 QQ 限制。** QQ 文档规定：对一条收到的消息，Direct chat 里 60 分钟内最多 4 条 Passive reply（被动回复），群里 5 分钟内最多 5 条。限制之内 server 发 Passive reply；超出之后，或者没有可回复的消息时，改发 Proactive message（主动消息）。Direct chat 和群都默认接收 Proactive message，所以 Claude 随时都能给它们发消息。Direct chat 的接收者可以在 QQ 里关掉“允许主动发送消息”，群主也可以在群设置里关掉“机器人主动发言”。发不出去时 Claude 会得知原因；消息不排队，也不重试。
 - **结果不明的消息不会发第二次。** QQ 还没回应连接就断了时，消息可能已经送达也可能没有。不会再发一次，Claude 会得知这一点。
 - **预期用法是一个常驻会话。** QQ 会把每条消息发给同一个机器人的所有连接。同一账号下有多个启用了本插件的 Claude Code 会话时，陌生 Sender 可能被回复不止一次。
 

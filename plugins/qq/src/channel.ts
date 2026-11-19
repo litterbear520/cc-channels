@@ -50,9 +50,9 @@ const INSTRUCTIONS = [
     'several messages for you. Pass a message_id as reply_to only when it would be unclear which message ' +
     'you are answering; QQ then shows your answer as quoting it. To send an image or a file, pass its ' +
     'absolute path in files; one of over 25 MB is refused, so offer another way to deliver it.',
-  'In a Direct chat you can also write first, with no message to answer, for example to report that a ' +
-    'long task has finished: a Direct chat\'s chat_id is its Sender\'s sender_id, and any Sender on the ' +
-    'allowlist can be written to at any time.',
+  'You can also write first, with no message to answer, for example to report that a long task has ' +
+    'finished. Any Sender on the allowlist and any registered group can be written to at any time: a Direct ' +
+    'chat\'s chat_id is its Sender\'s sender_id, and a group\'s is the chat_id its messages arrive with.',
   'A tag with attachment_count carries images or files that have not been downloaded. Call ' +
     'download_attachment with the tag\'s chat_id and message_id to save them locally, then read the paths it ' +
     'returns. Only recent messages can be fetched this way, and none from before a restart.',
@@ -62,10 +62,9 @@ const INSTRUCTIONS = [
     'quoted message as a block quote (lines starting with ">"), followed by what they wrote.',
   'A tag with chat_type="group" is a message from a QQ group, where several people read and write; user ' +
     'is the name of the one who wrote it, and sender_id tells them apart. Answer with the same chat_id and ' +
-    'the answer goes to the whole group, so keep out of it anything meant for one person. QQ lets the bot ' +
-    'write to a group only shortly after a message there: about five messages within five minutes of it. ' +
-    'Send the answer to a group in few messages and without delay. When reply reports that the group did ' +
-    'not take a message, say so in your answer to the next message from that person; do not try again.',
+    'the answer goes to the whole group, so keep out of it anything meant for one person. When reply ' +
+    'reports that the group did not take a message, its owner may have stopped the bot writing first: say ' +
+    'so in your answer to the next message from that person, and leave the message unsent until then.',
   'A group message with mentioned="true" was addressed to you with an @: answer it. One with ' +
     'mentioned="false" was written in the group without addressing you, and reaches you because the user ' +
     'lets you hear the whole group. Most of those are people talking to each other: stay silent and send ' +
@@ -105,7 +104,7 @@ const TOOLS = [
     name: 'reply',
     description:
       'Send a message to a QQ Direct chat or group. Pass the chat_id from an inbound <channel> tag; in a Direct chat ' +
-        'it is the Sender\'s sender_id, and you can write first, with no message to answer. The text is sent ' +
+        'it is the Sender\'s sender_id. You can write first, with no message to answer. The text is sent ' +
       `as Markdown, and text over ${MAX_MESSAGE_LENGTH} characters is split into several messages. Local files ` +
       'can be attached with files. Returns the ' +
       'IDs of the messages sent, or an error saying why QQ did not take them; nothing is retried later. ' +
