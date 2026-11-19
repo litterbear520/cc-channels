@@ -6,7 +6,7 @@ import { groupChatId, groupIdOf } from './chat-id.ts'
 import { MAX_MESSAGE_LENGTH, splitText } from './chunk.ts'
 import { readCredentials } from './credentials.ts'
 import { CredentialsRejectedError, type ButtonPress, type InboundMessage, type OutboundContent, type OutboundFile, type QQGateway, type QuoteRef } from './gateway.ts'
-import { createInbox, describeAttachments } from './inbox.ts'
+import { createInbox, describeAttachments, safeFileName } from './inbox.ts'
 import { readFilesToSend } from './outbound-files.ts'
 import {
   parseButtonVerdict,
@@ -17,7 +17,10 @@ import {
   type PermissionRequest,
   type Verdict,
 } from './permission.ts'
+import { createReceivedLog } from './received-log.ts'
 import { createReplyPolicy, DeliveryUnknownError } from './reply-policy.ts'
+import { createSeenMessages } from './seen-messages.ts'
+import { createSessionFile } from './session-file.ts'
 
 export interface Channel {
   /** Serves Claude Code over the transport and begins connecting to QQ. */
@@ -28,7 +31,7 @@ export interface Channel {
 
 export interface ChannelOptions {
   gateway: QQGateway
-  /** Directory holding the credentials file and the access file. */
+  /** Directory holding the credentials, the access file, the gateway session and the received log. */
   stateDir: string
   /** Receives one line per event worth a trace. Never given a secret. */
   log?: (line: string) => void
@@ -40,6 +43,8 @@ export interface ChannelOptions {
   approvalPollMs?: number
   /** How long after answering the first tools/list Claude Code is taken to listen for Channel events. */
   listeningDelayMs?: number
+  /** How often the received log is cut back to its last seven days, besides at startup. */
+  receivedLogPruneMs?: number
 }
 
 const INSTRUCTIONS = [
@@ -86,8 +91,11 @@ const INSTRUCTIONS = [
 /** QQ's documented limit: a bot's message can be taken back for this long after it was sent. */
 export const RECALL_WINDOW_MS = 2 * 60 * 1000
 
-/** QQ redelivers after a reconnect; this many recent message IDs are remembered to spot it. */
+/** How many of the messages reply sent, and of the inbound messages that can be quoted, are kept in memory. */
 const REMEMBERED_MESSAGE_IDS = 1000
+
+/** The received log is cut back once a day, and at startup. */
+const RECEIVED_LOG_PRUNE_MS = 24 * 60 * 60 * 1000
 
 // Text sent to people in QQ is Chinese and plain text.
 const pairingText = (code: string, reminder: boolean) =>
@@ -243,6 +251,7 @@ export function createChannel({
   approvalPollMs = 5000,
   // Generous on purpose: an event loses nothing by waiting a second at startup.
   listeningDelayMs = 1000,
+  receivedLogPruneMs = RECEIVED_LOG_PRUNE_MS,
 }: ChannelOptions): Channel {
   const mcp = new Server(
     { name: 'qq', version: '0.0.4' },
@@ -279,6 +288,15 @@ export function createChannel({
 
   const replies = createReplyPolicy({ gateway, now })
   const inbox = createInbox({ gateway, stateDir, now })
+  const seenMessages = createSeenMessages({ stateDir, log })
+  const receivedLog = createReceivedLog({ stateDir, now })
+  function pruneReceivedLog(): void {
+    try {
+      receivedLog.prune()
+    } catch (error) {
+      log(`could not remove the old lines of the received log: ${scrub(error)}`)
+    }
+  }
 
   mcp.setRequestHandler(ListToolsRequestSchema, async () => {
     setTimeout(announceListening, listeningDelayMs)
@@ -496,23 +514,13 @@ export function createChannel({
     if (quotableMessages.size > REMEMBERED_MESSAGE_IDS) quotableMessages.delete(quotableMessages.keys().next().value!)
   }
 
-  const seenMessageIds = new Set<string>()
-  /** True the first time a message ID is seen. */
-  function isNew(messageId: string): boolean {
-    if (seenMessageIds.has(messageId)) return false
-    seenMessageIds.add(messageId)
-    // A Set iterates in insertion order, so this forgets the oldest.
-    if (seenMessageIds.size > REMEMBERED_MESSAGE_IDS) seenMessageIds.delete(seenMessageIds.values().next().value!)
-    return true
-  }
-
   async function handleInbound(message: InboundMessage): Promise<void> {
-    if (!isNew(message.messageId)) return
+    if (!seenMessages.isNew(message.messageId)) return
     try {
       await answerOrDeliver(message)
     } catch (error) {
       // Not handled after all, so QQ's redelivery of it must not be taken for a duplicate.
-      seenMessageIds.delete(message.messageId)
+      seenMessages.forget(message.messageId)
       throw error
     }
   }
@@ -544,6 +552,22 @@ export function createChannel({
         .catch(error => log(`could not acknowledge a permission answer: ${scrub(error)}`))
       return
     }
+    // An image or a file sent alone has no text, and an event needs some.
+    const content = quotedPrefix(message) + (message.text || '(attachment)')
+    // Written before the event is pushed: should the session be replaced before it handles the
+    // message, the line is what is left of it. A failure to write never holds the message back.
+    try {
+      receivedLog.append({
+        message_id: message.messageId,
+        chat_id: chatId,
+        sender_id: message.senderId,
+        ts: message.timestamp,
+        text: content,
+        attachments: message.attachments.map(attachment => safeFileName(attachment.name)),
+      })
+    } catch (error) {
+      log(`could not write a message to the received log; passing it on anyway: ${scrub(error)}`)
+    }
     inbox.remember(chatId, message)
     rememberForQuoting(chatId, message)
     // Cosmetic, so a refusal is not worth a log line and never holds the message back.
@@ -553,8 +577,7 @@ export function createChannel({
     await mcp.notification({
       method: 'notifications/claude/channel',
       params: {
-        // An image or a file sent alone has no text, and an event needs some.
-        content: quotedPrefix(message) + (message.text || '(attachment)'),
+        content,
         meta: {
           chat_id: chatId,
           message_id: message.messageId,
@@ -590,6 +613,7 @@ export function createChannel({
     }
   }
   let approvalPoll: ReturnType<typeof setInterval> | undefined
+  let receivedLogPrune: ReturnType<typeof setInterval> | undefined
   let stopped = false
 
   /** Error text with the AppSecret taken out. Set once the credentials are read. */
@@ -621,7 +645,8 @@ export function createChannel({
       ).catch(reportingFailed)
     }
     try {
-      await gateway.connect(credentials, { onMessage, onButton, onLost })
+      const session = createSessionFile({ stateDir, appId: credentials.appId, log })
+      await gateway.connect(credentials, { onMessage, onButton, onLost }, session)
       log('connected to QQ')
       if (stopped) return
       approvalPoll = setInterval(() => {
@@ -648,12 +673,15 @@ export function createChannel({
   return {
     async start(transport) {
       await mcp.connect(transport)
+      pruneReceivedLog()
+      receivedLogPrune = setInterval(pruneReceivedLog, receivedLogPruneMs)
       // Not awaited: Claude Code must not wait on QQ to finish its handshake.
       void connectToQQ().catch(reportingFailed)
     },
     async stop() {
       stopped = true
       clearInterval(approvalPoll)
+      clearInterval(receivedLogPrune)
       try {
         await gateway.close()
       } finally {

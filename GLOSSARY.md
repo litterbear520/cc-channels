@@ -39,3 +39,11 @@ _Avoid_: active message, push
 **Guild**:
 QQ's community product (QQ 频道), a separate messaging scene from QQ direct and group chat.
 _Avoid_: channel, 频道 (unqualified)
+
+**Gateway session**:
+QQ's session on the bot's WebSocket connection, which a reconnect, or a restart of the Channel, can resume so that QQ delivers the events missed in between. Not the Claude Code session.
+_Avoid_: session (unqualified), connection
+
+**Received log**:
+The file in the state directory with one line for each message the Channel passed on to the Claude Code session, kept for 7 days.
+_Avoid_: inbox (that is the directory of downloaded attachments), history

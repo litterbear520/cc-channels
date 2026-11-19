@@ -132,12 +132,27 @@ Outbound, a `.png`, `.jpg`, `.jpeg` or `.gif` is shown as an image, a GIF animat
 
 When Claude Code needs approval for a tool call, the prompt is also sent to the Direct chat of every paired Sender, with an 允许 (allow) and a 拒绝 (deny) button under it. Press one, or answer `yes <id>` or `no <id>` (or `y` / `n`) with the ID shown in the prompt. Where QQ does not take the buttons, the prompt arrives as plain text and the written answer still works. The terminal prompt keeps working, and whichever answer comes first wins. A bare "yes" approves nothing. Prompts are never sent to a group, and neither an answer written in a group nor a button pressed there is taken as one. QQ cannot edit a message, so the buttons stay under a prompt that has been answered; pressing one then does nothing.
 
+## State directory
+
+The server keeps its state in `~/.claude/channels/qq/`, or in `QQ_STATE_DIR` when that is set. Every file in it is readable by your account only.
+
+| File | What it holds |
+| --- | --- |
+| `.env` | The AppID and AppSecret, written by `/qq:configure`. |
+| `access.json`, `access.lock`, `approved/` | The access policy, the allowlist, the groups and the Pairings; see [ACCESS.md](./ACCESS.md). |
+| `session.json` | The gateway session with QQ and the number of its last event. After a restart the server resumes this gateway session, so QQ can deliver the messages that arrived while the server was down. When QQ no longer takes it back, the server starts a new one and the file is replaced. |
+| `recent-message-ids.json` | The IDs of the last 1000 inbound messages. A message that QQ delivers again after a resume is not passed on a second time. |
+| `received.jsonl` | One line for each message passed on to the session, written before the session gets it. A line has `message_id`, `chat_id`, `sender_id`, `ts` (QQ's time), `text` (as Claude sees it, a quoted message included) and `attachments` (the file names). A line that cannot be written is logged, and the message is passed on all the same. Lines older than 7 days are removed at startup and once a day. The file holds what Senders wrote, in plain text. |
+| `inbox/` | Attachments that `download_attachment` saved. |
+
+How long QQ keeps a gateway session that can be resumed has not been measured against a real bot.
+
 ## Limits
 
 - **Direct chats and groups only.** Guild (QQ 频道) is not supported.
 - **Replies are metered by QQ.** QQ documents that a bot may answer one inbound message with at most 4 Passive replies within 60 minutes in a Direct chat, and 5 within 5 minutes in a group. Within those limits the server sends a Passive reply; beyond them, or when nothing has arrived to answer, it sends a Proactive message. Direct chats and groups both take Proactive messages by default, so Claude can write to either at any time. A Direct chat's recipient can switch them off in QQ (允许主动发送消息), and so can a group's owner in the group's settings (机器人主动发言). When a message cannot be delivered Claude is told why; nothing is queued or retried.
 - **A lost answer is not sent twice.** When the connection breaks before QQ answers, the message may or may not have arrived. It is not sent again, and Claude is told so.
-- **One long-lived session is the intended setup.** QQ delivers each message to every connection of a bot. If several Claude Code sessions of one account have the plugin enabled, an unknown Sender can be answered more than once.
+- **One long-lived session is the intended setup.** QQ delivers each message to every connection of a bot. If several Claude Code sessions of one account have the plugin enabled, an unknown Sender can be answered more than once, and the sessions share one `session.json` and one `received.jsonl`.
 
 What was seen against a real bot, including where QQ did not enforce its documented limits, is recorded in [docs/research/qq-bot-and-channels.md](../../docs/research/qq-bot-and-channels.md).
 

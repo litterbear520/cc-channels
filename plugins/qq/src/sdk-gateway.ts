@@ -18,6 +18,7 @@ import {
   type Button,
   type ButtonPress,
   type GatewayEvents,
+  type GatewaySessionStore,
   type InboundMessage,
   type OutboundContent,
   type OutboundFile,
@@ -231,12 +232,15 @@ export async function readAtMost(
 
 /**
  * The real QQ gateway, on the official SDK's low-level protocol entry. The SDK
- * keeps the WebSocket alive (heartbeat, reconnect, resume); this module adds
- * the access token and decides what is worth a log line.
+ * keeps the WebSocket alive (heartbeat, reconnect, resume, across restarts
+ * too through the session store); this module adds the access token and
+ * decides what is worth a log line.
  *
  * `bun test` covers the parts that need no bot: the message bodies, the
- * mapping of inbound events, the reading of send failures, and the download.
- * The connection itself is verified by hand against a real bot.
+ * mapping of inbound events, the reading of send failures, the download, and
+ * resuming a saved gateway session against a stand-in for QQ's gateway. The
+ * connection itself, and how long QQ keeps a gateway session to resume, are
+ * verified by hand against a real bot.
  */
 export function createSdkGateway({
   log,
@@ -264,7 +268,11 @@ export function createSdkGateway({
     | undefined
 
   return {
-    async connect(credentials: Credentials, { onMessage, onButton, onLost }: GatewayEvents): Promise<void> {
+    async connect(
+      credentials: Credentials,
+      { onMessage, onButton, onLost }: GatewayEvents,
+      session: GatewaySessionStore,
+    ): Promise<void> {
       if (live) throw new Error('already connected to QQ')
 
       const tokens = createAccessTokenSource({ credentials })
@@ -317,6 +325,9 @@ export function createSdkGateway({
         abortSignal: abort.signal,
         userAgent: USER_AGENT,
         intents: GROUP_AND_DIRECT_CHAT_INTENT | INTERACTION_INTENT,
+        // The SDK resumes the saved gateway session at startup, saves it after every event, and
+        // clears it when QQ will not take it back, starting a new one.
+        session,
         // The SDK's info output narrates every routine reconnect, so it is kept
         // out of the log. Its debug level prints payloads and is not taken at all.
         log: {

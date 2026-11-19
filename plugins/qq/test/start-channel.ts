@@ -13,16 +13,21 @@ export const credentials: Credentials = { appId: '102000001', appSecret: 'test-a
 
 /**
  * Starts a Channel on an in-memory transport, with the test playing Claude Code.
- * `configured: false` leaves the state directory without credentials.
+ * `configured: false` leaves the state directory without credentials. Passing
+ * the `stateDir` of an earlier Channel starts it again, as after a restart.
  */
 export async function startChannel({
   configured = true,
   gateway = new FakeQQGateway(),
   pairingCodes = [] as string[],
+  stateDir = undefined as string | undefined,
+  receivedLogPruneMs = 60_000,
 } = {}) {
-  const stateDir = mkdtempSync(join(tmpdir(), 'qq-channel-test-'))
-  removeAfterTest(stateDir)
-  if (configured) saveCredentials(stateDir, credentials)
+  if (stateDir === undefined) {
+    stateDir = mkdtempSync(join(tmpdir(), 'qq-channel-test-'))
+    removeAfterTest(stateDir)
+    if (configured) saveCredentials(stateDir, credentials)
+  }
 
   const logged: string[] = []
   /** The Channel's clock. Tests move it by assigning to `now`. */
@@ -36,6 +41,7 @@ export async function startChannel({
     ...(pairingCodes.length > 0 ? { newPairingCode: () => pairingCodes.shift() ?? 'ffffff' } : {}),
     approvalPollMs: 2,
     listeningDelayMs: 1,
+    receivedLogPruneMs,
   })
   stopAfterTest(() => channel.stop())
   const [claudeCodeSide, channelSide] = InMemoryTransport.createLinkedPair()

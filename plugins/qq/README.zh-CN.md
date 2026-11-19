@@ -132,12 +132,27 @@ QQ 不向机器人提供编辑消息、表情回应和查历史的接口，所�
 
 Claude Code 的某次工具调用需要批准时，请求也会发到每个已配对 Sender 的 Direct chat，下面带“允许”和“拒绝”两个按钮。点其中一个，或者按请求里给出的 ID 回复 `yes <id>` 或 `no <id>`（也可以用 `y` / `n`）。QQ 不接受按钮时，请求以纯文字送达，文字回答照样有效。终端里的提示照常可用，先到的回答生效。单独一个"yes"不会批准任何东西。请求不会发到群里，在群里写的回答、在群里点的按钮都不算数。QQ 不能编辑消息，所以回答过的请求下面按钮还在，再点不会有任何效果。
 
+## 状态目录
+
+server 把状态存在 `~/.claude/channels/qq/`，设了 `QQ_STATE_DIR` 时存在那个目录。里面的文件都只有你的账号可读。
+
+| 文件 | 存什么 |
+| --- | --- |
+| `.env` | AppID 和 AppSecret，由 `/qq:configure` 写入。 |
+| `access.json`、`access.lock`、`approved/` | 访问策略、allowlist、群和配对，见 [ACCESS.zh-CN.md](./ACCESS.zh-CN.md)。 |
+| `session.json` | 和 QQ 网关的会话号，以及最后一个事件的序号。重启后 server 接着用这个会话，QQ 就能补发 server 停着时到的消息。QQ 不再接受这个会话时，server 重新登录，换成新会话。 |
+| `recent-message-ids.json` | 最近 1000 条收到的消息的 ID。续上会话后 QQ 再发一次的消息，不会第二次交给会话。 |
+| `received.jsonl` | 收件记录：每条交给会话的消息一行，先写这一行再交给会话。一行里有 `message_id`、`chat_id`、`sender_id`、`ts`（QQ 给的时间）、`text`（Claude 看到的正文，含引用的那条）和 `attachments`（附件的名字）。写不进时记一行日志，消息照常交给会话。超过 7 天的行在启动时和每天一次删掉。文件里是 Sender 写的原文，没有加密。 |
+| `inbox/` | `download_attachment` 下载的附件。 |
+
+QQ 把一个会话保留多久、多久之内还能续上，还没有用真机器人测过。
+
 ## 限制
 
 - **只支持 Direct chat 和群。** 不支持 Guild（QQ 频道）。
 - **回复数量受 QQ 限制。** QQ 文档规定：对一条收到的消息，Direct chat 里 60 分钟内最多 4 条 Passive reply（被动回复），群里 5 分钟内最多 5 条。限制之内 server 发 Passive reply；超出之后，或者没有可回复的消息时，改发 Proactive message（主动消息）。Direct chat 和群都默认接收 Proactive message，所以 Claude 随时都能给它们发消息。Direct chat 的接收者可以在 QQ 里关掉“允许主动发送消息”，群主也可以在群设置里关掉“机器人主动发言”。发不出去时 Claude 会得知原因；消息不排队，也不重试。
 - **结果不明的消息不会发第二次。** QQ 还没回应连接就断了时，消息可能已经送达也可能没有。不会再发一次，Claude 会得知这一点。
-- **预期用法是一个常驻会话。** QQ 会把每条消息发给同一个机器人的所有连接。同一账号下有多个启用了本插件的 Claude Code 会话时，陌生 Sender 可能被回复不止一次。
+- **预期用法是一个常驻会话。** QQ 会把每条消息发给同一个机器人的所有连接。同一账号下有多个启用了本插件的 Claude Code 会话时，陌生 Sender 可能被回复不止一次，这几个会话还会共用同一个 `session.json` 和 `received.jsonl`。
 
 对真实机器人的实测结果（包括 QQ 没有按文档执行限制的地方）记录在 [docs/research/qq-bot-and-channels.md](../../docs/research/qq-bot-and-channels.md)。
 

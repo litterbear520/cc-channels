@@ -3,6 +3,8 @@ import {
   AttachmentTooLargeError,
   type ButtonPress,
   type GatewayEvents,
+  type GatewaySession,
+  type GatewaySessionStore,
   type SendRefusedError,
   type InboundMessage,
   type OutboundContent,
@@ -58,9 +60,16 @@ export class FakeQQGateway implements QQGateway {
   /** The attachments QQ serves, keyed by URL. */
   downloadable = new Map<string, Uint8Array>()
 
-  private events: GatewayEvents | undefined
+  /** The gateway session the last connect resumed, or undefined when it started a new one. */
+  resumed: GatewaySession | undefined
+  /** How many gateway sessions this fake started, by connecting without one to resume or after one was invalidated. */
+  sessionsStarted = 0
 
-  async connect(credentials: Credentials, events: GatewayEvents): Promise<void> {
+  private events: GatewayEvents | undefined
+  private sessionStore: GatewaySessionStore | undefined
+  private session: GatewaySession | undefined
+
+  async connect(credentials: Credentials, events: GatewayEvents, sessionStore: GatewaySessionStore): Promise<void> {
     this.connectAttempts++
     const failure = this.failNextConnectWith
     if (failure) {
@@ -69,10 +78,37 @@ export class FakeQQGateway implements QQGateway {
     }
     this.connectedWith = credentials
     this.events = events
+    this.sessionStore = sessionStore
+    // As the SDK does: resume the saved gateway session when there is one, otherwise start one.
+    const saved = sessionStore.load()
+    this.resumed = saved ?? undefined
+    if (saved) {
+      this.session = { ...saved }
+      sessionStore.save(this.session)
+    } else {
+      this.startSession()
+    }
+  }
+
+  private startSession(): void {
+    this.sessionsStarted++
+    this.session = { sessionId: `gateway-session-${this.sessionsStarted}`, lastSeq: null }
+    this.sessionStore?.save(this.session)
+  }
+
+  /** QQ answers that the gateway session cannot be resumed: the gateway clears it and starts a new one. */
+  invalidateSession(): void {
+    this.sessionStore?.clear()
+    this.startSession()
   }
 
   /** Delivers a Direct chat or Group chat message, as QQ would. */
   receive(message: InboundMessage): void {
+    // QQ numbers every event of a gateway session, and the SDK saves the number before handing the event on.
+    if (this.session) {
+      this.session.lastSeq = (this.session.lastSeq ?? 0) + 1
+      this.sessionStore?.save(this.session)
+    }
     this.events?.onMessage(message)
   }
 

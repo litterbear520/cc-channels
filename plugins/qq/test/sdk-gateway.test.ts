@@ -1,12 +1,20 @@
 import { afterEach, expect, test } from 'bun:test'
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { ApiError, type InboundMessage as SdkInboundMessage } from '@tencent-connect/qqbot-nodejs/protocol'
 import { AttachmentTooLargeError, SendRefusedError } from '../src/gateway.ts'
 import { createSdkGateway, messageBody, readableFaces, refusedByQQ, toButtonPress, toInboundMessage } from '../src/sdk-gateway.ts'
+import { createSessionFile, sessionFile } from '../src/session-file.ts'
+import { removeAfterTest } from './cleanup.ts'
+import { credentials } from './start-channel.ts'
 
 /*
  * The parts of the real gateway that need no bot: what is sent, how inbound
- * events are read, how a failed request is judged, and the download. The
- * download runs against a stand-in for fetch.
+ * events are read, how a failed request is judged, the download, and the
+ * resuming of a saved gateway session. The download runs against a stand-in
+ * for fetch, the gateway session against a stand-in for QQ's WebSocket
+ * gateway on this machine.
  */
 
 const MiB = 1024 * 1024
@@ -296,3 +304,86 @@ test("QQ's own emoji in a message's text are shown by name", () => {
 test('a group event without a group ID is left out', () => {
   expect(toInboundMessage(event({ kind: 'group' }))).toBeUndefined()
 })
+
+/**
+ * A stand-in for QQ's WebSocket gateway on this machine, with fetch answering
+ * the access token and the gateway's address. `onFrame` answers each frame
+ * the SDK sends.
+ */
+function serveGateway(onFrame: (frame: { op: number; d: any }, send: (payload: unknown) => void) => void) {
+  const frames: { op: number; d: any }[] = []
+  const server = Bun.serve({
+    port: 0,
+    fetch: (request, server) => (server.upgrade(request) ? undefined : new Response('not a WebSocket', { status: 400 })),
+    websocket: {
+      open: ws => void ws.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 45_000 } })),
+      message: (ws, data) => {
+        const frame = JSON.parse(String(data))
+        frames.push(frame)
+        onFrame(frame, payload => ws.send(JSON.stringify(payload)))
+      },
+    },
+  })
+  globalThis.fetch = (async (url: string | URL) =>
+    String(url).includes('getAppAccessToken')
+      ? Response.json({ access_token: 'test-access-token', expires_in: '7200' })
+      : Response.json({ url: `ws://localhost:${server.port}` })) as unknown as typeof fetch
+  return { frames, stop: () => server.stop(true) }
+}
+
+const OP_IDENTIFY = 2
+const OP_RESUME = 6
+const OP_INVALID_SESSION = 9
+const ready = (sessionId: string) => ({ op: 0, s: 1, t: 'READY', d: { session_id: sessionId, user: { id: 'bot' } } })
+
+test('the real gateway resumes the gateway session saved in the state directory', async () => {
+  const stateDir = mkdtempSync(join(tmpdir(), 'qq-sdk-session-'))
+  removeAfterTest(stateDir)
+  const session = createSessionFile({ stateDir, appId: credentials.appId, log: () => {} })
+  session.save({ sessionId: 'saved-session', lastSeq: 7 })
+  const qq = serveGateway((frame, send) => {
+    if (frame.op === OP_RESUME) send({ op: 0, s: 8, t: 'RESUMED', d: {} })
+  })
+  const gateway = createSdkGateway({ log: () => {} })
+  try {
+    await gateway.connect(credentials, { onMessage() {}, onButton() {}, onLost() {} }, session)
+
+    expect(qq.frames.map(frame => frame.op)).toEqual([OP_RESUME])
+    expect(qq.frames[0]!.d).toMatchObject({ session_id: 'saved-session', seq: 7 })
+    expect(JSON.parse(readFileSync(sessionFile(stateDir), 'utf8'))).toMatchObject({ sessionId: 'saved-session', lastSeq: 8 })
+
+    // Stopping keeps the gateway session for the next start.
+    await gateway.close()
+    expect(JSON.parse(readFileSync(sessionFile(stateDir), 'utf8'))).toMatchObject({ sessionId: 'saved-session', lastSeq: 8 })
+  } finally {
+    await gateway.close()
+    qq.stop()
+  }
+})
+
+test('when QQ will not resume the saved gateway session, the real gateway removes it and starts a new one', async () => {
+  const stateDir = mkdtempSync(join(tmpdir(), 'qq-sdk-session-'))
+  removeAfterTest(stateDir)
+  const session = createSessionFile({ stateDir, appId: credentials.appId, log: () => {} })
+  session.save({ sessionId: 'expired-session', lastSeq: 7 })
+  let fileAfterRefusal: boolean | undefined
+  const qq = serveGateway((frame, send) => {
+    if (frame.op === OP_RESUME) {
+      send({ op: OP_INVALID_SESSION, d: false })
+      // The SDK clears the file as it reads the refusal, and logs in again a few seconds later.
+      setTimeout(() => (fileAfterRefusal = existsSync(sessionFile(stateDir))), 500)
+    }
+    if (frame.op === OP_IDENTIFY) send(ready('new-session'))
+  })
+  const gateway = createSdkGateway({ log: () => {} })
+  try {
+    await gateway.connect(credentials, { onMessage() {}, onButton() {}, onLost() {} }, session)
+
+    expect(fileAfterRefusal).toBe(false)
+    expect(qq.frames.map(frame => frame.op)).toEqual([OP_RESUME, OP_IDENTIFY])
+    expect(JSON.parse(readFileSync(sessionFile(stateDir), 'utf8'))).toMatchObject({ sessionId: 'new-session', lastSeq: 1 })
+  } finally {
+    await gateway.close()
+    qq.stop()
+  }
+}, 10_000)

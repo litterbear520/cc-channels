@@ -17,8 +17,13 @@ export interface QQGateway {
    * `events.onLost` is called if, after that, the connection ends for good: QQ
    * has shut the bot out, or has stopped accepting the credentials. Drops that
    * the gateway recovers from are not reported.
+   *
+   * `session` keeps the gateway session across restarts. The gateway resumes
+   * the one `session.load` returns, so that QQ delivers what arrived while the
+   * Channel was down, and starts a new one when there is none or QQ no longer
+   * takes it back.
    */
-  connect(credentials: Credentials, events: GatewayEvents): Promise<void>
+  connect(credentials: Credentials, events: GatewayEvents, session: GatewaySessionStore): Promise<void>
   /**
    * Sends one message to a Direct chat or a Group chat, named by its chat ID:
    * as a Passive reply when `answering` names an inbound message of that chat,
@@ -68,6 +73,25 @@ export interface GatewayEvents {
    */
   onButton(press: ButtonPress): void
   onLost(error: Error): void
+}
+
+/**
+ * What resuming a connection to QQ's gateway needs: the gateway session QQ
+ * handed out, and the sequence number of the last event received in it.
+ */
+export interface GatewaySession {
+  sessionId: string
+  lastSeq: number | null
+}
+
+/** Where the gateway keeps its {@link GatewaySession}. The shape is the official SDK's session persistence port. */
+export interface GatewaySessionStore {
+  /** The saved gateway session, or null when there is none to resume. */
+  load(): GatewaySession | null
+  /** Called whenever the gateway session or its sequence number changes. */
+  save(session: GatewaySession): void
+  /** Called when QQ no longer takes the gateway session back. */
+  clear(): void
 }
 
 /** One press of a button, in a Direct chat or a Group chat. */

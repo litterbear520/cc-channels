@@ -102,7 +102,15 @@ test('a hostile file name cannot place an attachment outside the inbox', async (
   }
   expect(readdirSync(join(stateDir, 'inbox'))).toHaveLength(names.length)
   // Nothing was written beside the inbox: only the files the Channel keeps there itself.
-  expect(readdirSync(stateDir).sort()).toEqual(['.env', 'access.json', 'approved', 'inbox'])
+  expect(readdirSync(stateDir).sort()).toEqual([
+    '.env',
+    'access.json',
+    'approved',
+    'inbox',
+    'received.jsonl',
+    'recent-message-ids.json',
+    'session.json',
+  ])
   expect(readFileSync(join(stateDir, '.env'), 'utf8')).not.toContain('hostile')
 })
 
