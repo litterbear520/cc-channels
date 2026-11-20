@@ -8,8 +8,13 @@ import { SendRefusedError, type OutboundContent, type QQGateway } from './gatewa
  */
 export const PASSIVE_REPLY_WINDOW_MS = 60 * 60 * 1000
 export const PASSIVE_REPLIES_PER_MESSAGE = 4
-/** QQ's documented limits in a Group chat, which are much tighter. Not reached in the live check either. */
-export const GROUP_PASSIVE_REPLY_WINDOW_MS = 5 * 60 * 1000
+/**
+ * QQ's documented limits in a Group chat since 2026-11-17, when the window grew
+ * from 5 to 60 minutes. QQ allows 50 replies instead of 5 when the bot's
+ * developer is an owner or administrator of the group, which the server cannot
+ * tell, so it keeps the 5 that hold for every group.
+ */
+export const GROUP_PASSIVE_REPLY_WINDOW_MS = 60 * 60 * 1000
 export const GROUP_PASSIVE_REPLIES_PER_MESSAGE = 5
 
 const limitsOf = (chatId: string) =>

@@ -150,7 +150,7 @@ QQ 把一个会话保留多久、多久之内还能续上，还没有用真机�
 ## 限制
 
 - **只支持 Direct chat 和群。** 不支持 Guild（QQ 频道）。
-- **回复数量受 QQ 限制。** QQ 文档规定：对一条收到的消息，Direct chat 里 60 分钟内最多 4 条 Passive reply（被动回复），群里 5 分钟内最多 5 条。限制之内 server 发 Passive reply；超出之后，或者没有可回复的消息时，改发 Proactive message（主动消息）。Direct chat 和群都默认接收 Proactive message，所以 Claude 随时都能给它们发消息。Direct chat 的接收者可以在 QQ 里关掉“允许主动发送消息”，群主也可以在群设置里关掉“机器人主动发言”。发不出去时 Claude 会得知原因；消息不排队，也不重试。
+- **回复数量受 QQ 限制。** QQ 文档规定：对一条收到的消息，Direct chat 里 60 分钟内最多 4 条 Passive reply（被动回复），群里 60 分钟内最多 5 条。机器人的开发者是群主或管理员的群，QQ 允许 50 条；但 server 分辨不出是哪些群，所以每个群都按 5 条算。限制之内 server 发 Passive reply；超出之后，或者没有可回复的消息时，改发 Proactive message（主动消息）。Direct chat 和群都默认接收 Proactive message，所以 Claude 随时都能给它们发消息。Direct chat 的接收者可以在 QQ 里关掉“允许主动发送消息”，群主也可以在群设置里关掉“机器人主动发言”。发不出去时 Claude 会得知原因；消息不排队，也不重试。
 - **结果不明的消息不会发第二次。** QQ 还没回应连接就断了时，消息可能已经送达也可能没有。不会再发一次，Claude 会得知这一点。
 - **预期用法是一个常驻会话。** QQ 会把每条消息发给同一个机器人的所有连接。同一账号下有多个启用了本插件的 Claude Code 会话时，陌生 Sender 可能被回复不止一次，这几个会话还会共用同一个 `session.json` 和 `received.jsonl`。
 

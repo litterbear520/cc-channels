@@ -216,11 +216,22 @@ test('a group takes five Passive replies to one message, and the sixth goes out 
   expect(gateway.sent.map(sent => sent.answering?.sequence)).toEqual([1, 2, 3, 4, 5, undefined])
 })
 
-test('five minutes after the last group message an answer is a Proactive message, and a refusal is reported with its reason', async () => {
+test('thirty minutes after the last group message an answer is still a Passive reply to it', async () => {
+  const { gateway, callTool, clock } = await startWithGroup()
+  const message = groupMessageFrom('SENDER1', 'GROUP1')
+  gateway.receive(message)
+  await settle()
+  clock.now += 30 * MINUTE_MS
+
+  expect((await callTool('reply', { chat_id: GROUP, text: 'done' })).isError).toBe(false)
+  expect(gateway.sent[0]!.answering).toEqual({ messageId: message.messageId, sequence: 1 })
+})
+
+test('sixty minutes after the last group message an answer is a Proactive message, and a refusal is reported with its reason', async () => {
   const { gateway, callTool, clock } = await startWithGroup()
   gateway.receive(groupMessageFrom('SENDER1', 'GROUP1'))
   await settle()
-  clock.now += 5 * MINUTE_MS
+  clock.now += 60 * MINUTE_MS
 
   expect((await callTool('reply', { chat_id: GROUP, text: 'late' })).isError).toBe(false)
   expect(gateway.sent[0]!.answering).toBeUndefined()
