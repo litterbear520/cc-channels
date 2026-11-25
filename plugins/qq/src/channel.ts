@@ -6,7 +6,7 @@ import { groupChatId, groupIdOf } from './chat-id.ts'
 import { MAX_MESSAGE_LENGTH, splitText } from './chunk.ts'
 import { readCredentials } from './credentials.ts'
 import { CredentialsRejectedError, type ButtonPress, type InboundMessage, type OutboundContent, type OutboundFile, type QQGateway, type QuoteRef } from './gateway.ts'
-import { createInbox, describeAttachments, safeFileName } from './inbox.ts'
+import { attachmentPlaceholder, createInbox, describeAttachments, safeFileName } from './inbox.ts'
 import { readFilesToSend } from './outbound-files.ts'
 import {
   parseButtonVerdict,
@@ -60,7 +60,9 @@ const INSTRUCTIONS = [
     'chat\'s chat_id is its Sender\'s sender_id, and a group\'s is the chat_id its messages arrive with.',
   'A tag with attachment_count carries images or files that have not been downloaded. Call ' +
     'download_attachment with the tag\'s chat_id and message_id to save them locally, then read the paths it ' +
-    'returns. Only recent messages can be fetched this way, and none from before a restart.',
+    'returns. Only recent messages can be fetched this way, and none from before a restart. Entries marked ' +
+    '"quoted:" in attachments are the images and files of the quoted message; they download with this ' +
+    'message\'s message_id.',
   'When a tool call needs approval, the prompt is also sent to QQ, and the person can answer there or in ' +
     'the terminal. Their answer is handled for you and never arrives as a message.',
   'When the person quotes an earlier message, the tag has quoting="true" and its text begins with the ' +
@@ -201,8 +203,13 @@ const MAX_QUOTED_LENGTH = 500
  */
 function quotedPrefix(message: InboundMessage): string {
   if (!message.quoted) return ''
-  const text = message.quoted.text.trim() || '(a message without text)'
-  const shown = text.length > MAX_QUOTED_LENGTH ? `${text.slice(0, MAX_QUOTED_LENGTH)}…` : text
+  const placeholders = message.quoted.attachments.map(attachment =>
+    attachment.url ? attachmentPlaceholder(attachment) : `${attachmentPlaceholder(attachment)} (not downloadable: QQ sent no address)`,
+  )
+  const quotedText = message.quoted.text.trim()
+  // The text is cut before the placeholders are added, so that a long text cannot hide them.
+  const cut = quotedText.length > MAX_QUOTED_LENGTH ? `${quotedText.slice(0, MAX_QUOTED_LENGTH)}…` : quotedText
+  const shown = [cut, ...placeholders].filter(Boolean).join('\n') || '(a message without text)'
   return `${shown.split('\n').map(line => `> ${line}`).join('\n')}\n\n`
 }
 
@@ -499,8 +506,9 @@ export function createChannel({
 
   async function downloadAttachment(chatId: string, messageId: string): Promise<string> {
     assertAllowed(chatId)
-    const paths = await inbox.download(chatId, messageId)
-    return `downloaded ${paths.length} ${paths.length === 1 ? 'attachment' : 'attachments'}:\n${paths.join('\n')}`
+    const { paths, failures } = await inbox.download(chatId, messageId)
+    const downloaded = `downloaded ${paths.length} ${paths.length === 1 ? 'attachment' : 'attachments'}:\n${paths.join('\n')}`
+    return failures.length === 0 ? downloaded : `${downloaded}\nnot downloaded: ${failures.join('; ')}`
   }
 
   const reportingFailed = (error: unknown) => log(`could not report a connection problem: ${error}`)
@@ -554,6 +562,11 @@ export function createChannel({
     }
     // An image or a file sent alone has no text, and an event needs some.
     const content = quotedPrefix(message) + (message.text || '(attachment)')
+    // QQ has no history lookup, so the images and files of a quoted message can only be had now.
+    const quotedAttachments = (message.quoted?.attachments ?? []).filter(attachment => attachment.url)
+    const unreachable = (message.quoted?.attachments.length ?? 0) - quotedAttachments.length
+    // Whether QQ gives an address for each kind of quoted message is known only from live use, so a miss is logged.
+    if (unreachable > 0) log(`a quoted message came with ${unreachable} attachment(s) without an address; they cannot be downloaded`)
     // Written before the event is pushed: should the session be replaced before it handles the
     // message, the line is what is left of it. A failure to write never holds the message back.
     try {
@@ -563,12 +576,15 @@ export function createChannel({
         sender_id: message.senderId,
         ts: message.timestamp,
         text: content,
-        attachments: message.attachments.map(attachment => safeFileName(attachment.name)),
+        attachments: [
+          ...message.attachments.map(attachment => safeFileName(attachment.name)),
+          ...quotedAttachments.map(attachment => `quoted: ${safeFileName(attachment.name)}`),
+        ],
       })
     } catch (error) {
       log(`could not write a message to the received log; passing it on anyway: ${scrub(error)}`)
     }
-    inbox.remember(chatId, message)
+    inbox.remember(chatId, message.messageId, [...message.attachments, ...quotedAttachments])
     rememberForQuoting(chatId, message)
     // Cosmetic, so a refusal is not worth a log line and never holds the message back.
     // QQ has no typing status in a Group chat.
@@ -590,7 +606,9 @@ export function createChannel({
                 ...(displayName(message.senderName) ? { user: displayName(message.senderName) } : {}),
               }
             : {}),
-          ...(message.attachments.length > 0 ? describeAttachments(message.attachments) : {}),
+          ...(message.attachments.length + quotedAttachments.length > 0
+            ? describeAttachments(message.attachments, quotedAttachments)
+            : {}),
           ...(message.quoted ? { quoting: 'true' } : {}),
         },
       },

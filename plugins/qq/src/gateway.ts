@@ -125,8 +125,11 @@ export interface InboundMessage {
   text: string
   /** When the Sender wrote it, as QQ reports it (ISO 8601). */
   timestamp: string
-  /** Set when the Sender wrote this as an answer to an earlier message, which QQ sends along. */
-  quoted?: { text: string }
+  /**
+   * Set when the Sender wrote this as an answer to an earlier message, which
+   * QQ sends along: its text, and its images and files (empty when it has none).
+   */
+  quoted?: { text: string; attachments: InboundAttachment[] }
   /** What an answer needs in order to quote this message, when QQ supplies it. */
   quoteRef?: QuoteRef
   /** Images and files sent with the message; empty when there are none. */
@@ -135,6 +138,7 @@ export interface InboundMessage {
 
 /** A reference to an image or file a Sender sent. The bytes stay with QQ until downloaded. */
 export interface InboundAttachment {
+  /** Empty when QQ sent none, which has been seen only for an attachment of a quoted message. */
   url: string
   /** QQ's label: a MIME type such as `image/jpeg`, or `file`, `voice`. */
   contentType: string

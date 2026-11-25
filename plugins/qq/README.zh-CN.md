@@ -120,9 +120,11 @@ QQ 不向机器人提供编辑消息、表情回应和查历史的接口，所�
 
 带图片或文件的消息有 `attachment_count` 和 `attachments`；引用了之前消息的，带 `quoting="true"`，正文开头是以引用块形式出现的被引用文字。Claude 把标签里的 `chat_id` 传给 `reply` 来作答。
 
+被引用消息里的图片和文件，在引用块里写成 `[image]` 或 `[file: report.pdf]`。它们计入 `attachment_count`，在 `attachments` 里排在这条消息自己的附件后面，标着 `quoted:`，和自己的附件一起下载。QQ 随消息把它们发来，SDK 的 `quoteRef` 中间件也是从这里读。QQ 没给下载地址的，写成 `[image] (not downloadable: QQ sent no address)`，不计数，并记一行日志。
+
 ## 附件
 
-附件**不会**自动下载。`<channel>` 通知里列出每个附件的名字、类型和大小，Claude 真要用的时候才调用 `download_attachment(chat_id, message_id)`。文件落在 `~/.claude/channels/qq/inbox/`。下载到 25 MB 或超过两分钟就停止。
+附件**不会**自动下载。`<channel>` 通知里列出每个附件的名字、类型和大小，Claude 真要用的时候才调用 `download_attachment(chat_id, message_id)`。文件落在 `~/.claude/channels/qq/inbox/`。下载到 25 MB 或超过两分钟就停止。一条消息里有一个附件下载不了时，其余的照样下载，结果里写明哪个失败了。
 
 只能取近期消息的附件，重启之前的取不到：QQ 没有按 ID 取回历史消息的接口，server 把附件引用记在内存里。
 
@@ -142,7 +144,7 @@ server 把状态存在 `~/.claude/channels/qq/`，设了 `QQ_STATE_DIR` 时存�
 | `access.json`、`access.lock`、`approved/` | 访问策略、allowlist、群和配对，见 [ACCESS.zh-CN.md](./ACCESS.zh-CN.md)。 |
 | `session.json` | 和 QQ 网关的会话号，以及最后一个事件的序号。重启后 server 接着用这个会话，QQ 就能补发 server 停着时到的消息。QQ 不再接受这个会话时，server 重新登录，换成新会话。 |
 | `recent-message-ids.json` | 最近 1000 条收到的消息的 ID。续上会话后 QQ 再发一次的消息，不会第二次交给会话。 |
-| `received.jsonl` | 收件记录：每条交给会话的消息一行，先写这一行再交给会话。一行里有 `message_id`、`chat_id`、`sender_id`、`ts`（QQ 给的时间）、`text`（Claude 看到的正文，含引用的那条）和 `attachments`（附件的名字）。写不进时记一行日志，消息照常交给会话。超过 7 天的行在启动时和每天一次删掉。文件里是 Sender 写的原文，没有加密。 |
+| `received.jsonl` | 收件记录：每条交给会话的消息一行，先写这一行再交给会话。一行里有 `message_id`、`chat_id`、`sender_id`、`ts`（QQ 给的时间）、`text`（Claude 看到的正文，含引用的那条）和 `attachments`（附件的名字，被引用消息的附件以 `quoted: ` 开头）。写不进时记一行日志，消息照常交给会话。超过 7 天的行在启动时和每天一次删掉。文件里是 Sender 写的原文，没有加密。 |
 | `inbox/` | `download_attachment` 下载的附件。 |
 
 QQ 把一个会话保留多久、多久之内还能续上，还没有用真机器人测过。

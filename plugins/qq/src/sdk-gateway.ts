@@ -19,6 +19,7 @@ import {
   type ButtonPress,
   type GatewayEvents,
   type GatewaySessionStore,
+  type InboundAttachment,
   type InboundMessage,
   type OutboundContent,
   type OutboundFile,
@@ -156,15 +157,35 @@ export function toInboundMessage(message: SdkInboundMessage): InboundMessage | u
       : {}),
     text: readableFaces(inGroup ? groupText(message) : message.content),
     timestamp: message.timestamp,
-    ...(message.msgType === QQ_MESSAGE_TYPE_QUOTE ? { quoted: { text: message.msgElements?.[0]?.content ?? '' } } : {}),
+    ...(message.msgType === QQ_MESSAGE_TYPE_QUOTE ? { quoted: quotedMessage(message) } : {}),
     // QQ sends the index as `msg_idx` in the event's `message_scene.ext`.
     ...(message.msgIdx ? { quoteRef: message.msgIdx } : {}),
-    attachments: (message.attachments ?? []).map(attachment => ({
-      url: attachment.url,
-      contentType: attachment.content_type,
-      ...(attachment.filename ? { name: attachment.filename } : {}),
-      ...(attachment.size !== undefined ? { size: attachment.size } : {}),
-    })),
+    attachments: (message.attachments ?? []).map(toAttachment),
+  }
+}
+
+type SdkAttachment = NonNullable<SdkInboundMessage['attachments']>[number]
+
+function toAttachment(attachment: SdkAttachment): InboundAttachment {
+  return {
+    url: attachment.url,
+    contentType: attachment.content_type,
+    ...(attachment.filename ? { name: attachment.filename } : {}),
+    ...(attachment.size !== undefined ? { size: attachment.size } : {}),
+  }
+}
+
+/**
+ * The message a Sender quoted. QQ sends it in `msg_elements[0]`: its text in
+ * `content` and its images and files in `attachments`, which is where the
+ * SDK's own `quoteRef` middleware reads them too. One QQ sends without an
+ * address is kept, with an empty `url`, so that the Channel can say so.
+ */
+function quotedMessage(message: SdkInboundMessage): { text: string; attachments: InboundAttachment[] } {
+  const element = message.msgElements?.[0]
+  return {
+    text: element?.content ?? '',
+    attachments: (element?.attachments ?? []).map(attachment => toAttachment({ ...attachment, url: attachment.url ?? '' })),
   }
 }
 

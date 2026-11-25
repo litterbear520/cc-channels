@@ -21,7 +21,7 @@ export interface ReceivedEntry {
   ts: string
   /** The text of the Channel event. */
   text: string
-  /** The names of the attachments, as the Channel event lists them. */
+  /** The names of the attachments, as the Channel event lists them; those of a quoted message start with `quoted: `. */
   attachments: string[]
 }
 

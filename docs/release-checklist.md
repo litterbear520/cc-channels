@@ -90,6 +90,11 @@ Needs a QQ group the bot can join, and for steps 30 and 31 a second member who i
 - [ ] 36. Ask Claude to send a `.gif` from disk. It plays as an animation. Check a Direct chat and a group.
 - [ ] 37. Send a QQ emoji and a sticker. Each reaches the session as its name in brackets, such as `[捂脸]`.
 
+### Quoted images
+
+- [ ] 38. Send the bot an image, then quote it with a few words. The session shows `[image]` in the block quote, `attachment_count="1"`, and a `quoted:` entry in `attachments`. Ask Claude to look at it: it downloads the image and describes it. Check a Direct chat and a group.
+- [ ] 39. Ask Claude to send an image, then quote Claude's image with a few words. Either the session shows it as in step 38, or the block quote reads `[image] (not downloadable: QQ sent no address)` and the server's log has a line about an attachment without an address. Record which: it tells whether QQ gives an address for the bot's own image. In both cases `received.jsonl` has the line with the same text.
+
 ## Record of runs
 
 ### 2026-11-11, partial

@@ -233,9 +233,35 @@ test('a Direct chat event becomes an inbound message, attachments and quoting in
       attachments: [{ url: 'https://qq.example/a', content_type: 'file', filename: 'a.txt', size: 12 }],
     }),
   )
-  expect(quoting?.quoted).toEqual({ text: 'the earlier message' })
+  expect(quoting?.quoted).toEqual({ text: 'the earlier message', attachments: [] })
   expect(quoting?.quoteRef).toBe('REFIDX_2')
   expect(quoting?.attachments).toEqual([{ url: 'https://qq.example/a', contentType: 'file', name: 'a.txt', size: 12 }])
+})
+
+test('the images and files of a quoted message come from msg_elements, one without an address included', () => {
+  const quoting = toInboundMessage(
+    event({
+      msgType: 103,
+      msgElements: [
+        {
+          content: '',
+          attachments: [
+            { url: 'https://qq.example/q', content_type: 'image/png', filename: 'B1.png', size: 4096, width: 10, height: 10 },
+            { url: '', content_type: 'image/png' },
+          ],
+        },
+      ],
+    }),
+  )
+  expect(quoting?.quoted).toEqual({
+    text: '',
+    attachments: [
+      { url: 'https://qq.example/q', contentType: 'image/png', name: 'B1.png', size: 4096 },
+      { url: '', contentType: 'image/png' },
+    ],
+  })
+  // A message that quotes nothing has no quoted message, whatever msg_elements holds.
+  expect(toInboundMessage(event({ msgElements: [{ content: 'x' }] }))?.quoted).toBeUndefined()
 })
 
 test('an event from a Guild is left out', () => {

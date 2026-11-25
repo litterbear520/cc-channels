@@ -102,7 +102,7 @@ test('a message is written to the received log before it is passed on to the ses
   approvePairing(stateDir, 'a1b2c3', clock.now)
   gateway.receive({
     ...messageFrom('SENDER1', 'what is in these?'),
-    quoted: { text: 'the logs' },
+    quoted: { text: 'the logs', attachments: [] },
     attachments: [{ url: 'https://qq.example/a', contentType: 'file', name: 'build log.txt', size: 2048 }],
   })
   await settle()

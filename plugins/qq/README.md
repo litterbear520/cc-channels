@@ -120,9 +120,11 @@ what broke the build?
 
 A message with images or files carries `attachment_count` and `attachments`; one that quotes an earlier message carries `quoting="true"` and begins with the quoted text as a block quote. Claude answers by passing the tag's `chat_id` to `reply`.
 
+The images and files of a quoted message stand in the block quote as `[image]` or `[file: report.pdf]`. They count in `attachment_count`, are listed in `attachments` after the message's own with a `quoted:` mark, and download with them. QQ sends them with the message, as the SDK's `quoteRef` middleware reads them. One that QQ sends without an address reads `[image] (not downloadable: QQ sent no address)`, is not counted, and is logged.
+
 ## Attachments
 
-Attachments are **not** auto-downloaded. The `<channel>` notification lists each attachment's name, type, and size — the assistant calls `download_attachment(chat_id, message_id)` when it actually wants the file. Downloads land in `~/.claude/channels/qq/inbox/`. A download stops at 25 MB or after two minutes.
+Attachments are **not** auto-downloaded. The `<channel>` notification lists each attachment's name, type, and size — the assistant calls `download_attachment(chat_id, message_id)` when it actually wants the file. Downloads land in `~/.claude/channels/qq/inbox/`. A download stops at 25 MB or after two minutes. When one attachment of a message cannot be downloaded, the others still are, and the result names the one that failed.
 
 Only recent messages can be fetched this way, and none from before a restart: QQ cannot be asked for a past message, so the server keeps the attachment references in memory.
 
@@ -142,7 +144,7 @@ The server keeps its state in `~/.claude/channels/qq/`, or in `QQ_STATE_DIR` whe
 | `access.json`, `access.lock`, `approved/` | The access policy, the allowlist, the groups and the Pairings; see [ACCESS.md](./ACCESS.md). |
 | `session.json` | The gateway session with QQ and the number of its last event. After a restart the server resumes this gateway session, so QQ can deliver the messages that arrived while the server was down. When QQ no longer takes it back, the server starts a new one and the file is replaced. |
 | `recent-message-ids.json` | The IDs of the last 1000 inbound messages. A message that QQ delivers again after a resume is not passed on a second time. |
-| `received.jsonl` | One line for each message passed on to the session, written before the session gets it. A line has `message_id`, `chat_id`, `sender_id`, `ts` (QQ's time), `text` (as Claude sees it, a quoted message included) and `attachments` (the file names). A line that cannot be written is logged, and the message is passed on all the same. Lines older than 7 days are removed at startup and once a day. The file holds what Senders wrote, in plain text. |
+| `received.jsonl` | One line for each message passed on to the session, written before the session gets it. A line has `message_id`, `chat_id`, `sender_id`, `ts` (QQ's time), `text` (as Claude sees it, a quoted message included) and `attachments` (the file names; those of a quoted message start with `quoted: `). A line that cannot be written is logged, and the message is passed on all the same. Lines older than 7 days are removed at startup and once a day. The file holds what Senders wrote, in plain text. |
 | `inbox/` | Attachments that `download_attachment` saved. |
 
 How long QQ keeps a gateway session that can be resumed has not been measured against a real bot.

@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { chmodSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { AttachmentTooLargeError, type InboundAttachment, type InboundMessage, type QQGateway } from './gateway.ts'
+import { AttachmentTooLargeError, type InboundAttachment, type QQGateway } from './gateway.ts'
 
 /**
  * QQ has no API to fetch a past message, so the attachment references of this
@@ -21,13 +21,17 @@ const MAX_FILE_NAME_BYTES = 200
 export const inboxDir = (stateDir: string) => join(stateDir, 'inbox')
 
 export interface Inbox {
-  /** Keeps the attachment references of a message that arrived in a chat, for a later download. */
-  remember(chatId: string, message: InboundMessage): void
+  /**
+   * Keeps the attachment references of a message that arrived in a chat, for
+   * a later download: its own, then those of the message it quoted.
+   */
+  remember(chatId: string, messageId: string, attachments: InboundAttachment[]): void
   /**
    * Downloads the attachments of a remembered message of this chat into the
-   * inbox directory and returns their local paths.
+   * inbox directory. Returns the local paths of those saved, and why each of
+   * the others was not; rejects when none was saved.
    */
-  download(chatId: string, messageId: string): Promise<string[]>
+  download(chatId: string, messageId: string): Promise<{ paths: string[]; failures: string[] }>
 }
 
 export function createInbox({
@@ -42,9 +46,9 @@ export function createInbox({
   const remembered = new Map<string, { chatId: string; attachments: InboundAttachment[] }>()
 
   return {
-    remember(chatId, message) {
-      if (message.attachments.length === 0) return
-      remembered.set(message.messageId, { chatId, attachments: message.attachments })
+    remember(chatId, messageId, attachments) {
+      if (attachments.length === 0) return
+      remembered.set(messageId, { chatId, attachments })
       // A Map iterates in insertion order, so this forgets the oldest.
       if (remembered.size > REMEMBERED_MESSAGES) remembered.delete(remembered.keys().next().value!)
     },
@@ -64,26 +68,36 @@ export function createInbox({
       // The random part keeps downloads in the same millisecond apart, of one message or of two.
       const prefix = `${now()}-${randomBytes(4).toString('hex')}`
       const paths: string[] = []
+      // One that fails leaves the others to download: a quoted message's address, being older, is likelier to have expired.
+      const failures: string[] = []
       for (const [index, attachment] of message.attachments.entries()) {
         const name = safeFileName(attachment.name)
-        // QQ's figure saves a download that would be refused; the gateway counts the bytes, as QQ does not always give one.
-        if ((attachment.size ?? 0) > MAX_DOWNLOAD_BYTES) throw tooLarge(name)
-        let bytes: Uint8Array
         try {
-          bytes = await gateway.download(attachment.url, MAX_DOWNLOAD_BYTES)
+          paths.push(await save(attachment, join(dir, `${prefix}-${index + 1}-${name}`), name))
         } catch (error) {
-          throw error instanceof AttachmentTooLargeError ? tooLarge(name) : error
+          failures.push(error instanceof Error ? error.message : String(error))
         }
-        if (bytes.byteLength > MAX_DOWNLOAD_BYTES) throw tooLarge(name)
-        // The prefix keeps two attachments with one name apart; the name itself can no longer leave the directory.
-        const path = join(dir, `${prefix}-${index + 1}-${name}`)
-        // `wx` fails rather than overwrite a file another download returned.
-        writeFileSync(path, bytes, { mode: 0o600, flag: 'wx' })
-        chmodSync(path, 0o600)
-        paths.push(path)
       }
-      return paths
+      if (paths.length === 0) throw new Error(failures.join('; '))
+      return { paths, failures }
     },
+  }
+
+  async function save(attachment: InboundAttachment, path: string, name: string): Promise<string> {
+    // QQ's figure saves a download that would be refused; the gateway counts the bytes, as QQ does not always give one.
+    if ((attachment.size ?? 0) > MAX_DOWNLOAD_BYTES) throw tooLarge(name)
+    let bytes: Uint8Array
+    try {
+      bytes = await gateway.download(attachment.url, MAX_DOWNLOAD_BYTES)
+    } catch (error) {
+      throw error instanceof AttachmentTooLargeError ? tooLarge(name) : new Error(`${name}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+    if (bytes.byteLength > MAX_DOWNLOAD_BYTES) throw tooLarge(name)
+    // The prefix keeps two attachments with one name apart; the name itself can no longer leave the directory.
+    // `wx` fails rather than overwrite a file another download returned.
+    writeFileSync(path, bytes, { mode: 0o600, flag: 'wx' })
+    chmodSync(path, 0o600)
+    return path
   }
 }
 
@@ -104,16 +118,33 @@ export function safeFileName(name: string | undefined): string {
   return safe || 'attachment'
 }
 
-/** The two meta values that tell Claude what a message carries, without downloading anything. */
-export function describeAttachments(attachments: InboundAttachment[]): { attachment_count: string; attachments: string } {
-  return {
-    attachment_count: String(attachments.length),
-    attachments: attachments
-      .map(attachment => {
-        const size = attachment.size === undefined ? '' : `, ${Math.max(1, Math.round(attachment.size / 1024))}KB`
-        // The name is the Sender's text; the safe form keeps it from breaking out of the tag.
-        return `${safeFileName(attachment.name)} (${attachment.contentType.replace(/[^\w/.+-]/g, '_')}${size})`
-      })
-      .join('; '),
+/**
+ * The two meta values that tell Claude what a message carries, without
+ * downloading anything. Those of the message it quoted come last, marked
+ * `quoted:`, in the order download_attachment saves them.
+ */
+export function describeAttachments(
+  own: InboundAttachment[],
+  quoted: InboundAttachment[] = [],
+): { attachment_count: string; attachments: string } {
+  const describe = (attachment: InboundAttachment) => {
+    const size = attachment.size === undefined ? '' : `, ${Math.max(1, Math.round(attachment.size / 1024))}KB`
+    // The name is the Sender's text; the safe form keeps it from breaking out of the tag.
+    return `${safeFileName(attachment.name)} (${attachment.contentType.replace(/[^\w/.+-]/g, '_')}${size})`
   }
+  return {
+    attachment_count: String(own.length + quoted.length),
+    attachments: [...own.map(describe), ...quoted.map(attachment => `quoted: ${describe(attachment)}`)].join('; '),
+  }
+}
+
+/**
+ * How an attachment of a quoted message reads inside the block quote, as the
+ * SDK's `quoteRef` middleware writes it: `[image]`, or `[file: report.pdf]`.
+ */
+export function attachmentPlaceholder(attachment: InboundAttachment): string {
+  const type = attachment.contentType.toLowerCase()
+  const kind = type.startsWith('image/') ? 'image' : type.startsWith('video/') ? 'video' : type.startsWith('audio/') || type === 'voice' ? 'voice' : 'file'
+  // QQ replaces an image's name with one of its own, which tells Claude nothing.
+  return kind === 'image' || kind === 'voice' || !attachment.name ? `[${kind}]` : `[${kind}: ${safeFileName(attachment.name)}]`
 }
