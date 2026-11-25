@@ -261,7 +261,7 @@ export function createChannel({
   receivedLogPruneMs = RECEIVED_LOG_PRUNE_MS,
 }: ChannelOptions): Channel {
   const mcp = new Server(
-    { name: 'qq', version: '0.0.6' },
+    { name: 'qq', version: '0.0.7' },
     // The presence of this key is what makes Claude Code treat the server as a Channel.
     {
       capabilities: {

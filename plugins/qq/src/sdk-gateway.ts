@@ -27,7 +27,7 @@ import {
   type QQGateway,
 } from './gateway.ts'
 
-const USER_AGENT = 'claude-channel-qq/0.0.6'
+const USER_AGENT = 'claude-channel-qq/0.0.7'
 /** The group-and-direct-chat event group. Subscribing to it needs no approval from QQ. */
 const GROUP_AND_DIRECT_CHAT_INTENT = 1 << 25
 /** Button presses. Subscribing to it needs no approval from QQ either. */
